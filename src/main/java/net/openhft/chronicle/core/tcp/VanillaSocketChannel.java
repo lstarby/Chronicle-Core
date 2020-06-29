@@ -23,19 +23,17 @@ import net.openhft.chronicle.core.io.IORuntimeException;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
 
 public class VanillaSocketChannel extends AbstractCloseable implements ISocketChannel {
-    protected final SocketChannel socketChannel;
+    protected final ChronicleSocketChannel socketChannel;
 
-    VanillaSocketChannel(SocketChannel socketChannel) {
+    VanillaSocketChannel(ChronicleSocketChannel socketChannel) {
         this.socketChannel = socketChannel;
     }
 
     @Override
-    public SocketChannel socketChannel() {
+    public ChronicleSocketChannel socketChannel() {
         return socketChannel;
     }
 
@@ -55,7 +53,7 @@ public class VanillaSocketChannel extends AbstractCloseable implements ISocketCh
     }
 
     @Override
-    public Socket socket() {
+    public ChronicleSocket socket() {
         return socketChannel.socket();
     }
 
@@ -76,7 +74,7 @@ public class VanillaSocketChannel extends AbstractCloseable implements ISocketCh
     @Override
     public InetSocketAddress getLocalAddress() throws IORuntimeException {
         try {
-            return (InetSocketAddress) socketChannel.getLocalAddress();
+            return socketChannel.getLocalAddress();
         } catch (IOException e) {
             throw new IORuntimeException(e);
         }

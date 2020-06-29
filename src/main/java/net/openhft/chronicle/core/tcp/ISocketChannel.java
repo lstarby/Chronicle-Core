@@ -25,9 +25,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
 
 public interface ISocketChannel extends Closeable {
 
@@ -40,19 +38,19 @@ public interface ISocketChannel extends Closeable {
     }
 
     @NotNull
-    static ISocketChannel wrap(SocketChannel sc) {
+    static ISocketChannel wrap(ChronicleSocketChannel sc) {
         assert sc != null;
         return FAST_JAVA8_IO ? new FastJ8SocketChannel(sc) : new VanillaSocketChannel(sc);
     }
 
     @NotNull
-    static ISocketChannel wrapUnsafe(SocketChannel sc) {
+    static ISocketChannel wrapUnsafe(ChronicleSocketChannel sc) {
         assert sc != null;
         return FAST_JAVA8_IO ? new UnsafeFastJ8SocketChannel(sc) : new VanillaSocketChannel(sc);
     }
 
     @NotNull
-    SocketChannel socketChannel();
+    ChronicleSocketChannel socketChannel();
 
     int read(ByteBuffer byteBuffer) throws IOException;
 
@@ -61,7 +59,7 @@ public interface ISocketChannel extends Closeable {
     long write(ByteBuffer[] byteBuffer) throws IOException;
 
     @NotNull
-    Socket socket();
+    ChronicleSocket socket();
 
     void configureBlocking(boolean blocking) throws IOException;
 
@@ -72,7 +70,8 @@ public interface ISocketChannel extends Closeable {
     InetSocketAddress getLocalAddress() throws IORuntimeException;
 
     /**
-     * As this socket can be closed in a background thread it can be both isClosed() and isOpen() if close() has been called but it hasn't actually been closed
+     * As this socket can be closed in a background thread it can be both isClosed() and isOpen() if close() has been called but it hasn't actually
+     * been closed
      *
      * @return is the underlying socket open
      * @see net.openhft.chronicle.core.io.QueryCloseable
@@ -80,7 +79,8 @@ public interface ISocketChannel extends Closeable {
     boolean isOpen();
 
     /**
-     * As this socket can be closed in a background thread it can be both isClosed() and isOpen() if close() has been called but it hasn't actually been closed
+     * As this socket can be closed in a background thread it can be both isClosed() and isOpen() if close() has been called but it hasn't actually
+     * been closed
      *
      * @return has close been called
      */
@@ -89,4 +89,5 @@ public interface ISocketChannel extends Closeable {
     // boolean isClosed();
 
     boolean isBlocking();
+
 }
