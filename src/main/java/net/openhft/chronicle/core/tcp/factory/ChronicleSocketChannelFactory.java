@@ -1,5 +1,6 @@
 package net.openhft.chronicle.core.tcp.factory;
 
+import net.openhft.chronicle.core.io.Closeable;
 import net.openhft.chronicle.core.tcp.ChronicleSocket;
 import net.openhft.chronicle.core.tcp.ChronicleSocketChannel;
 import org.jetbrains.annotations.NotNull;
@@ -23,12 +24,12 @@ public enum ChronicleSocketChannelFactory {
         return newInstance(SocketChannel.open(socketAddress));
     }
 
-    static ChronicleSocketChannel open(final SocketChannel sc) {
+    static ChronicleSocketChannel open(@NotNull final SocketChannel sc) {
         return newInstance(sc);
     }
 
     @NotNull
-    private static ChronicleSocketChannel newInstance(final SocketChannel sc) {
+    private static ChronicleSocketChannel newInstance(@NotNull final SocketChannel sc) {
         return new ChronicleSocketChannel() {
             @Override
             public boolean isClosed() {
@@ -37,7 +38,7 @@ public enum ChronicleSocketChannelFactory {
 
             @Override
             public void close() {
-                throw new UnsupportedOperationException("todo");
+                Closeable.closeQuietly(sc);
             }
 
             @Override
@@ -57,7 +58,9 @@ public enum ChronicleSocketChannelFactory {
 
             @Override
             public void configureBlocking(final boolean blocking) throws IOException {
-                sc.configureBlocking(blocking);
+                SocketChannel sc1 = sc;
+                if (sc1 != null)
+                    sc1.configureBlocking(blocking);
             }
 
             @Override
@@ -82,7 +85,10 @@ public enum ChronicleSocketChannelFactory {
 
             @Override
             public ChronicleSocket socket() {
-                return ChronicleSocketFactory.open(sc.socket());
+                SocketChannel sc1 = sc;
+                if (sc1 == null)
+                    return null;
+                return ChronicleSocketFactory.open(sc1.socket());
             }
 
             @Override

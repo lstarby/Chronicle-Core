@@ -20,6 +20,7 @@ package net.openhft.chronicle.core.tcp;
 import net.openhft.chronicle.core.io.AbstractCloseable;
 import net.openhft.chronicle.core.io.Closeable;
 import net.openhft.chronicle.core.io.IORuntimeException;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -32,6 +33,7 @@ public class VanillaSocketChannel extends AbstractCloseable implements ISocketCh
         this.socketChannel = socketChannel;
     }
 
+    @NotNull
     @Override
     public ChronicleSocketChannel socketChannel() {
         return socketChannel;
@@ -53,6 +55,7 @@ public class VanillaSocketChannel extends AbstractCloseable implements ISocketCh
     }
 
     @Override
+    @NotNull
     public ChronicleSocket socket() {
         return socketChannel.socket();
     }
@@ -62,6 +65,7 @@ public class VanillaSocketChannel extends AbstractCloseable implements ISocketCh
         socketChannel.configureBlocking(blocking);
     }
 
+    @NotNull
     @Override
     public InetSocketAddress getRemoteAddress() throws IORuntimeException {
         try {
@@ -71,6 +75,7 @@ public class VanillaSocketChannel extends AbstractCloseable implements ISocketCh
         }
     }
 
+    @NotNull
     @Override
     public InetSocketAddress getLocalAddress() throws IORuntimeException {
         try {

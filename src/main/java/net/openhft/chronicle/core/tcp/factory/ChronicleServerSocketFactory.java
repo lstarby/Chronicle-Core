@@ -11,11 +11,13 @@ import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.SocketOption;
 import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 
 public class ChronicleServerSocketFactory {
 
     public static ChronicleServerSocketChannel open() throws IOException {
         ServerSocketChannel ssc = ServerSocketChannel.open();
+
         return new ChronicleServerSocketChannel() {
 
             @Override
@@ -25,7 +27,13 @@ public class ChronicleServerSocketFactory {
 
             @Override
             public ChronicleSocketChannel accept() throws IOException {
-                return ChronicleSocketChannelFactory.open(ssc.accept());
+                ssc.configureBlocking(true);
+                SocketChannel accept = ssc.accept();
+
+                if (accept == null) {
+                    System.out.println("\"\" = " + "");
+                }
+                return ChronicleSocketChannelFactory.open(accept);
             }
 
             @Override
@@ -80,8 +88,8 @@ public class ChronicleServerSocketFactory {
             }
 
             @Override
-            public void configureBlocking(final boolean b) {
-                throw new UnsupportedOperationException("todo");
+            public void configureBlocking(final boolean configureBlocking) throws IOException {
+                ssc.configureBlocking(configureBlocking);
             }
         };
 
