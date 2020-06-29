@@ -1,4 +1,6 @@
-package net.openhft.chronicle.core.tcp;
+package net.openhft.chronicle.core.tcp.factory;
+
+import net.openhft.chronicle.core.tcp.ChronicleSocket;
 
 import java.io.IOException;
 import java.net.Socket;

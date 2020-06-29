@@ -1,10 +1,11 @@
-package net.openhft.chronicle.core.tcp;
+package net.openhft.chronicle.core.tcp.factory;
 
+import net.openhft.chronicle.core.tcp.ChronicleSocket;
+import net.openhft.chronicle.core.tcp.ChronicleSocketChannel;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.net.SocketOption;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
@@ -18,7 +19,7 @@ public enum ChronicleSocketChannelFactory {
         return newInstance(SocketChannel.open());
     }
 
-    public static ChronicleSocketChannel open(SocketAddress socketAddress) throws IOException {
+    public static ChronicleSocketChannel open(InetSocketAddress socketAddress) throws IOException {
         return newInstance(SocketChannel.open(socketAddress));
     }
 

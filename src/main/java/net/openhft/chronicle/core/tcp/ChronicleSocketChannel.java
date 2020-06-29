@@ -1,6 +1,7 @@
 package net.openhft.chronicle.core.tcp;
 
 import net.openhft.chronicle.core.io.Closeable;
+import net.openhft.chronicle.core.tcp.factory.ChronicleSocketChannelFactory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
