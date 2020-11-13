@@ -62,9 +62,9 @@ import net.openhft.chronicle.core.annotation.UsedViaReflection;
         while (true) {
 <span class="fc" id="L63">            long last5 = this.lastNanos5;</span>
 <span class="fc" id="L64">            long timeNanos5 = timeNanos &gt;&gt;&gt; 5;</span>
-<span class="pc bpc" id="L65" title="1 of 2 branches missed.">            if (timeNanos5 &lt;= last5) {</span>
-<span class="nc" id="L66">                timeNanos5 = last5 + 1;</span>
-<span class="nc" id="L67">                timeNanos = timeNanos5 &lt;&lt; 5;</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            if (timeNanos5 &lt;= last5) {</span>
+<span class="fc" id="L66">                timeNanos5 = last5 + 1;</span>
+<span class="fc" id="L67">                timeNanos = timeNanos5 &lt;&lt; 5;</span>
             }
 <span class="pc bpc" id="L69" title="1 of 2 branches missed.">            if (UnsafeMemory.UNSAFE.compareAndSwapLong(this, LAST_NANOS, last5, timeNanos5))</span>
 <span class="fc" id="L70">                return timeNanos;</span>
