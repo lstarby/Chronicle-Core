@@ -1,0 +1,600 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObjectUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.util</a> &gt; <span class="el_source">ObjectUtils.java</span></div><h1>ObjectUtils.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core.util;
+
+import net.openhft.chronicle.core.ClassLocal;
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.OS;
+import net.openhft.chronicle.core.pool.EnumCache;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.lang.reflect.*;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+import static net.openhft.chronicle.core.pool.ClassAliasPool.CLASS_ALIASES;
+import static net.openhft.chronicle.core.util.ObjectUtils.Immutability.MAYBE;
+import static net.openhft.chronicle.core.util.ObjectUtils.Immutability.NO;
+
+<span class="fc" id="L41">public enum ObjectUtils {</span>
+    ;
+
+<span class="fc" id="L44">    static final Map&lt;Class, Class&gt; primMap = new LinkedHashMap&lt;Class, Class&gt;() {{</span>
+<span class="fc" id="L45">        put(boolean.class, Boolean.class);</span>
+<span class="fc" id="L46">        put(byte.class, Byte.class);</span>
+<span class="fc" id="L47">        put(char.class, Character.class);</span>
+<span class="fc" id="L48">        put(short.class, Short.class);</span>
+<span class="fc" id="L49">        put(int.class, Integer.class);</span>
+<span class="fc" id="L50">        put(float.class, Float.class);</span>
+<span class="fc" id="L51">        put(long.class, Long.class);</span>
+<span class="fc" id="L52">        put(double.class, Double.class);</span>
+<span class="fc" id="L53">        put(void.class, Void.class);</span>
+<span class="fc" id="L54">    }};</span>
+<span class="fc" id="L55">    static final Map&lt;Class, Object&gt; DEFAULT_MAP = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L56">    static final ClassLocal&lt;ThrowingFunction&lt;String, Object, Exception&gt;&gt; PARSER_CL = ClassLocal.withInitial(new ConversionFunction());</span>
+<span class="fc" id="L57">    static final ClassLocal&lt;Map&lt;String, Enum&gt;&gt; CASE_IGNORE_LOOKUP = ClassLocal.withInitial(ObjectUtils::caseIgnoreLookup);</span>
+<span class="fc" id="L58">    static final ClassValue&lt;Method&gt; READ_RESOLVE = ClassLocal.withInitial(c -&gt; {</span>
+        try {
+<span class="nc" id="L60">            Method m = c.getDeclaredMethod(&quot;readResolve&quot;);</span>
+<span class="nc" id="L61">            Jvm.setAccessible(m);</span>
+<span class="nc" id="L62">            return m;</span>
+<span class="nc" id="L63">        } catch (NoSuchMethodException expected) {</span>
+<span class="nc" id="L64">            return null;</span>
+<span class="nc" id="L65">        } catch (Exception e) {</span>
+<span class="nc" id="L66">            throw new AssertionError(e);</span>
+        }
+    });
+<span class="fc" id="L69">    private static final Map&lt;Class, Immutability&gt; immutabilityMap = new ConcurrentHashMap&lt;&gt;();</span>
+
+    // these should only ever be changed on startup.
+<span class="pc" id="L72">    private static volatile ClassLocal&lt;Class&gt; interfaceToDefaultClass = ClassLocal.withInitial(c -&gt; lookForImplEnum(c));</span>
+<span class="fc" id="L73">    private static volatile ClassLocal&lt;Supplier&gt; supplierClassLocal = ClassLocal.withInitial(ObjectUtils::supplierForClass);</span>
+
+    static {
+<span class="fc" id="L76">        DEFAULT_MAP.put(boolean.class, false);</span>
+<span class="fc" id="L77">        DEFAULT_MAP.put(byte.class, (byte) 0);</span>
+<span class="fc" id="L78">        DEFAULT_MAP.put(short.class, (short) 0);</span>
+<span class="fc" id="L79">        DEFAULT_MAP.put(char.class, (char) 0);</span>
+<span class="fc" id="L80">        DEFAULT_MAP.put(int.class, 0);</span>
+<span class="fc" id="L81">        DEFAULT_MAP.put(long.class, 0L);</span>
+<span class="fc" id="L82">        DEFAULT_MAP.put(float.class, 0.0f);</span>
+<span class="fc" id="L83">        DEFAULT_MAP.put(double.class, 0.0);</span>
+<span class="fc" id="L84">    }</span>
+
+    private static Supplier supplierForClass(Class&lt;?&gt; c) {
+<span class="nc bnc" id="L87" title="All 2 branches missed.">        if (c == null)</span>
+<span class="nc" id="L88">            throw new NullPointerException();</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (c.isPrimitive())</span>
+<span class="nc" id="L90">            throw new IllegalArgumentException(&quot;primitive: &quot; + c.getName());</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">        if (c.isInterface()) {</span>
+<span class="nc" id="L92">            return () -&gt; {</span>
+<span class="nc" id="L93">                Class aClass = ObjectUtils.interfaceToDefaultClass.get(c);</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">                if (aClass == null)</span>
+<span class="nc" id="L95">                    throw new IllegalArgumentException(&quot;interface: &quot; + c.getName());</span>
+<span class="nc" id="L96">                return supplierForClass(aClass);</span>
+            };
+        }
+<span class="nc bnc" id="L99" title="All 2 branches missed.">        if (c.isEnum())</span>
+<span class="nc" id="L100">            return () -&gt; {</span>
+                try {
+<span class="nc" id="L102">                    return OS.memory().allocateInstance(c);</span>
+<span class="nc" id="L103">                } catch (Exception e) {</span>
+<span class="nc" id="L104">                    throw new AssertionError(e);</span>
+                }
+            };
+<span class="nc bnc" id="L107" title="All 2 branches missed.">        if (Modifier.isAbstract(c.getModifiers()))</span>
+<span class="nc" id="L108">            throw new IllegalArgumentException(&quot;abstract class: &quot; + c.getName());</span>
+        try {
+<span class="nc" id="L110">            Constructor constructor = c.getDeclaredConstructor();</span>
+<span class="nc" id="L111">            Jvm.setAccessible(constructor);</span>
+<span class="nc" id="L112">            return ThrowingSupplier.asSupplier(constructor::newInstance);</span>
+
+<span class="nc" id="L114">        } catch (Exception e) {</span>
+<span class="nc" id="L115">            return () -&gt; {</span>
+                try {
+<span class="nc" id="L117">                    return OS.memory().allocateInstance(c);</span>
+<span class="nc" id="L118">                } catch (InstantiationException e1) {</span>
+<span class="nc" id="L119">                    throw Jvm.rethrow(e1);</span>
+                }
+            };
+        }
+    }
+
+    public static void immutabile(Class clazz, boolean isImmutable) {
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        immutabilityMap.put(clazz, isImmutable ? Immutability.YES : Immutability.NO);</span>
+<span class="nc" id="L127">    }</span>
+
+    public static Immutability isImmutable(@NotNull Class clazz) {
+<span class="fc" id="L130">        Immutability immutability = immutabilityMap.get(clazz);</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (immutability == null)</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            return Comparable.class.isAssignableFrom(clazz) ? MAYBE : NO;</span>
+<span class="nc" id="L133">        return immutability;</span>
+    }
+
+    public static boolean isTrue(CharSequence s) {
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        if (s == null)</span>
+<span class="nc" id="L138">            return false;</span>
+<span class="fc bfc" id="L139" title="All 4 branches covered.">        switch (s.length()) {</span>
+            case 1:
+<span class="fc" id="L141">                char ch = Character.toLowerCase(s.charAt(0));</span>
+<span class="pc bpc" id="L142" title="1 of 4 branches missed.">                return ch == 't' || ch == 'y';</span>
+            case 3:
+<span class="fc" id="L144">                return equalsCaseIgnore(s, &quot;yes&quot;);</span>
+            case 4:
+<span class="fc" id="L146">                return equalsCaseIgnore(s, &quot;true&quot;);</span>
+            default:
+<span class="fc" id="L148">                return false;</span>
+        }
+    }
+
+    public static boolean isFalse(CharSequence s) {
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">        if (s == null)</span>
+<span class="nc" id="L154">            return false;</span>
+<span class="pc bpc" id="L155" title="2 of 4 branches missed.">        switch (s.length()) {</span>
+            case 1:
+<span class="fc" id="L157">                char ch = Character.toLowerCase(s.charAt(0));</span>
+<span class="pc bpc" id="L158" title="2 of 4 branches missed.">                return ch == 'f' || ch == 'n';</span>
+            case 2:
+<span class="fc" id="L160">                return equalsCaseIgnore(s, &quot;no&quot;);</span>
+            case 5:
+<span class="nc" id="L162">                return equalsCaseIgnore(s, &quot;false&quot;);</span>
+            default:
+<span class="nc" id="L164">                return false;</span>
+        }
+    }
+
+    private static boolean equalsCaseIgnore(CharSequence cs, String s) {
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (cs instanceof String)</span>
+<span class="fc" id="L170">            return ((String) cs).equalsIgnoreCase(s);</span>
+<span class="nc" id="L171">        return StringUtils.equalsCaseIgnore(cs, s);</span>
+    }
+
+    /**
+     * If the class is a primitive type, change it to the equivalent wrapper.
+     *
+     * @param eClass to check
+     * @return the wrapper class if eClass is a primitive type, or the eClass if not.
+     */
+    public static Class primToWrapper(Class eClass) {
+<span class="fc" id="L181">        Class clazz0 = primMap.get(eClass);</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        if (clazz0 != null)</span>
+<span class="fc" id="L183">            eClass = clazz0;</span>
+<span class="fc" id="L184">        return eClass;</span>
+    }
+
+    @Nullable
+    public static &lt;E&gt; E convertTo(@Nullable Class&lt;E&gt; eClass, @Nullable Object o)
+            throws ClassCastException, IllegalArgumentException {
+        // shorter path.
+<span class="pc bpc" id="L191" title="3 of 6 branches missed.">        return eClass == null || o == null || eClass.isInstance(o)</span>
+                ? (E) o
+<span class="fc" id="L193">                : convertTo0(eClass, o);</span>
+    }
+
+    @NotNull
+    private static Map&lt;String, Enum&gt; caseIgnoreLookup(@NotNull Class c) {
+<span class="nc" id="L198">        @NotNull Map&lt;String, Enum&gt; map = new TreeMap&lt;&gt;(String.CASE_INSENSITIVE_ORDER);</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">        for (Object o : c.getEnumConstants()) {</span>
+<span class="nc" id="L200">            @NotNull Enum e = (Enum) o;</span>
+<span class="nc" id="L201">            map.put(e.name().toUpperCase(), e);</span>
+        }
+<span class="nc" id="L203">        return map;</span>
+    }
+
+    @NotNull
+    public static &lt;E extends Enum&lt;E&gt;&gt; E valueOfIgnoreCase(@NotNull Class&lt;E&gt; eClass, @NotNull String name) {
+<span class="nc" id="L208">        final Map&lt;String, Enum&gt; map = CASE_IGNORE_LOOKUP.get(eClass);</span>
+<span class="nc bnc" id="L209" title="All 4 branches missed.">        if (name.startsWith(&quot;{&quot;) &amp;&amp; name.endsWith(&quot;}&quot;))</span>
+<span class="nc" id="L210">            return getSingletonForEnum(eClass);</span>
+<span class="nc" id="L211">        @NotNull final E anEnum = (E) map.get(name);</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        return anEnum == null ? EnumCache.of(eClass).valueOf(name) : anEnum;</span>
+    }
+
+    public static &lt;E extends Enum&lt;E&gt;&gt; E getSingletonForEnum(Class&lt;E&gt; eClass) {
+<span class="nc" id="L216">        E[] enumConstants = eClass.getEnumConstants();</span>
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        if (enumConstants.length == 0)</span>
+<span class="nc" id="L218">            throw new AssertionError(&quot;Cannot convert marshallable to &quot; + eClass + &quot; as it doesn't have any instances&quot;);</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">        if (enumConstants.length &gt; 1)</span>
+<span class="nc" id="L220">            Jvm.warn().on(ObjectUtils.class, eClass + &quot; has multiple INSTANCEs, picking the first one&quot;);</span>
+<span class="nc" id="L221">        return enumConstants[0];</span>
+    }
+
+    static &lt;E&gt; E convertTo0(Class&lt;E&gt; eClass, @Nullable Object o)
+            throws ClassCastException, IllegalArgumentException {
+<span class="fc" id="L226">        eClass = primToWrapper(eClass);</span>
+<span class="pc bpc" id="L227" title="2 of 4 branches missed.">        if (eClass.isInstance(o) || o == null) return (E) o;</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">        if (eClass == Void.class) return null;</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">        if (eClass == String.class) return (E) o.toString();</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        if (Enum.class.isAssignableFrom(eClass)) {</span>
+<span class="nc" id="L231">            return (E) valueOfIgnoreCase((Class) eClass, o.toString());</span>
+        }
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        if (o instanceof CharSequence) {</span>
+<span class="fc" id="L234">            @Nullable CharSequence cs = (CharSequence) o;</span>
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">            if (Character.class.equals(eClass)) {</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">                if (cs.length() &gt; 0)</span>
+<span class="nc" id="L237">                    return (E) (Character) cs.charAt(0);</span>
+                else
+<span class="nc" id="L239">                    return null;</span>
+            }
+<span class="fc" id="L241">            @NotNull String s = cs.toString();</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">            if (eClass == String.class)</span>
+<span class="nc" id="L243">                return (E) s;</span>
+
+            try {
+<span class="fc" id="L246">                return (E) PARSER_CL.get(eClass).apply(s);</span>
+
+<span class="nc" id="L248">            } catch (Exception e) {</span>
+<span class="nc" id="L249">                throw asCCE(e);</span>
+            }
+        }
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        if (Number.class.isAssignableFrom(eClass)) {</span>
+<span class="fc" id="L253">            return (E) convertToNumber(eClass, o);</span>
+        }
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">        if (ReadResolvable.class.isAssignableFrom(eClass))</span>
+<span class="nc" id="L256">            return (E) o;</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        if (Object[].class.isAssignableFrom(eClass)) {</span>
+<span class="nc" id="L258">            return convertToArray(eClass, o);</span>
+        }
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">        if (Set.class.isAssignableFrom(eClass)) {</span>
+<span class="nc" id="L261">            return (E) new LinkedHashSet((Collection) o);</span>
+        }
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">        if (Character.class == eClass) {</span>
+<span class="fc" id="L264">            String s = o.toString();</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">            if (s.length() == 1)</span>
+<span class="fc" id="L266">                return (E) (Character) s.charAt(0);</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">            if (s.isEmpty())</span>
+<span class="nc" id="L268">                return (E) Character.valueOf((char) 0);</span>
+        }
+<span class="nc bnc" id="L270" title="All 2 branches missed.">        if (CharSequence.class.isAssignableFrom(eClass)) {</span>
+            try {
+<span class="nc" id="L272">                return (E) PARSER_CL.get(eClass).apply(o.toString());</span>
+
+<span class="nc" id="L274">            } catch (Exception e) {</span>
+<span class="nc" id="L275">                throw asCCE(e);</span>
+            }
+        }
+<span class="nc" id="L278">        throw new ClassCastException(&quot;Unable to convert &quot; + o.getClass() + &quot; &quot; + o + &quot; to &quot; + eClass);</span>
+    }
+
+    @NotNull
+    public static ClassCastException asCCE(Exception e) {
+<span class="nc" id="L283">        @NotNull ClassCastException cce = new ClassCastException();</span>
+<span class="nc" id="L284">        cce.initCause(e);</span>
+<span class="nc" id="L285">        return cce;</span>
+    }
+
+    @NotNull
+    private static &lt;E&gt; E convertToArray(@NotNull Class&lt;E&gt; eClass, Object o)
+            throws IllegalArgumentException {
+<span class="nc" id="L291">        int len = sizeOf(o);</span>
+<span class="nc" id="L292">        Object array = Array.newInstance(eClass.getComponentType(), len);</span>
+<span class="nc" id="L293">        Iterator iter = iteratorFor(o);</span>
+<span class="nc" id="L294">        Class elementType = elementType(eClass);</span>
+<span class="nc bnc" id="L295" title="All 2 branches missed.">        for (int i = 0; i &lt; len; i++) {</span>
+<span class="nc" id="L296">            @Nullable Object value = convertTo(elementType, iter.next());</span>
+<span class="nc" id="L297">            Array.set(array, i, value);</span>
+        }
+<span class="nc" id="L299">        return (E) array;</span>
+    }
+
+    private static &lt;E&gt; Class elementType(@NotNull Class&lt;E&gt; eClass) {
+<span class="nc bnc" id="L303" title="All 2 branches missed.">        if (Object[].class.isAssignableFrom(eClass))</span>
+<span class="nc" id="L304">            return eClass.getComponentType();</span>
+<span class="nc" id="L305">        return Object.class;</span>
+    }
+
+    private static Iterator iteratorFor(Object o) {
+<span class="nc bnc" id="L309" title="All 2 branches missed.">        if (o instanceof Iterable) {</span>
+<span class="nc" id="L310">            return ((Iterable) o).iterator();</span>
+        }
+<span class="nc bnc" id="L312" title="All 2 branches missed.">        if (o instanceof Object[]) {</span>
+<span class="nc" id="L313">            return Arrays.asList((Object[]) o).iterator();</span>
+        }
+<span class="nc" id="L315">        throw new UnsupportedOperationException();</span>
+    }
+
+    private static int sizeOf(Object o) throws IllegalArgumentException {
+<span class="nc bnc" id="L319" title="All 2 branches missed.">        if (o instanceof Collection)</span>
+<span class="nc" id="L320">            return ((Collection) o).size();</span>
+<span class="nc bnc" id="L321" title="All 2 branches missed.">        if (o instanceof Map)</span>
+<span class="nc" id="L322">            return ((Map) o).size();</span>
+<span class="nc bnc" id="L323" title="All 2 branches missed.">        if (o.getClass().isArray())</span>
+<span class="nc" id="L324">            return Array.getLength(o);</span>
+<span class="nc" id="L325">        throw new UnsupportedOperationException();</span>
+    }
+
+    private static Number convertToNumber(Class eClass, Object o)
+            throws NumberFormatException {
+<span class="pc bpc" id="L330" title="1 of 2 branches missed.">        if (o instanceof Number) {</span>
+<span class="nc" id="L331">            @NotNull Number n = (Number) o;</span>
+<span class="nc bnc" id="L332" title="All 2 branches missed.">            if (eClass == Double.class)</span>
+<span class="nc" id="L333">                return n.doubleValue();</span>
+<span class="nc bnc" id="L334" title="All 2 branches missed.">            if (eClass == Long.class)</span>
+<span class="nc" id="L335">                return n.longValue();</span>
+<span class="nc bnc" id="L336" title="All 2 branches missed.">            if (eClass == Integer.class)</span>
+<span class="nc" id="L337">                return n.intValue();</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">            if (eClass == Float.class)</span>
+<span class="nc" id="L339">                return n.floatValue();</span>
+<span class="nc bnc" id="L340" title="All 2 branches missed.">            if (eClass == Short.class)</span>
+<span class="nc" id="L341">                return n.shortValue();</span>
+<span class="nc bnc" id="L342" title="All 2 branches missed.">            if (eClass == Byte.class)</span>
+<span class="nc" id="L343">                return n.byteValue();</span>
+<span class="nc bnc" id="L344" title="All 2 branches missed.">            if (eClass == BigDecimal.class)</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">                return n instanceof Long ? BigDecimal.valueOf(n.longValue()) : BigDecimal.valueOf(n.doubleValue());</span>
+            // TODO fix for large numbers.
+<span class="nc bnc" id="L347" title="All 2 branches missed.">            if (eClass == BigInteger.class)</span>
+<span class="nc" id="L348">                return new BigInteger(o.toString());</span>
+<span class="nc" id="L349">        } else {</span>
+<span class="fc" id="L350">            String s = o.toString();</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">            if (eClass == Double.class)</span>
+<span class="fc" id="L352">                return Double.parseDouble(s);</span>
+<span class="fc bfc" id="L353" title="All 2 branches covered.">            if (eClass == Long.class)</span>
+<span class="fc" id="L354">                return Long.parseLong(s);</span>
+<span class="pc bpc" id="L355" title="1 of 2 branches missed.">            if (eClass == Integer.class)</span>
+<span class="fc" id="L356">                return Integer.parseInt(s);</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">            if (eClass == Float.class)</span>
+<span class="nc" id="L358">                return Float.parseFloat(s);</span>
+<span class="nc bnc" id="L359" title="All 2 branches missed.">            if (eClass == Short.class)</span>
+<span class="nc" id="L360">                return Short.parseShort(s);</span>
+<span class="nc bnc" id="L361" title="All 2 branches missed.">            if (eClass == Byte.class)</span>
+<span class="nc" id="L362">                return Byte.parseByte(s);</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">            if (eClass == BigDecimal.class)</span>
+<span class="nc" id="L364">                return new BigDecimal(s);</span>
+            // TODO fix for large numbers.
+<span class="nc bnc" id="L366" title="All 2 branches missed.">            if (eClass == BigInteger.class)</span>
+<span class="nc" id="L367">                return new BigInteger(s);</span>
+        }
+<span class="nc" id="L369">        throw new UnsupportedOperationException(&quot;Cannot convert &quot; + o.getClass() + &quot; to &quot; + eClass);</span>
+    }
+
+    @NotNull
+    public static &lt;T&gt; T newInstance(@NotNull Class&lt;T&gt; clazz) {
+<span class="nc" id="L374">        Supplier cons = supplierClassLocal.get(clazz);</span>
+<span class="nc" id="L375">        return (T) cons.get();</span>
+    }
+
+    @Nullable
+    public static Object newInstanceOrNull(Class type) {
+        try {
+<span class="nc" id="L381">            return newInstance(type);</span>
+<span class="nc" id="L382">        } catch (Exception e) {</span>
+<span class="nc" id="L383">            return null;</span>
+        }
+    }
+
+    public static &lt;T&gt; T[] addAll(@NotNull T first, @NotNull T... additional) {
+        T[] interfaces;
+<span class="nc bnc" id="L389" title="All 2 branches missed.">        if (additional.length == 0) {</span>
+<span class="nc" id="L390">            interfaces = (T[]) Array.newInstance(first.getClass(), 1);</span>
+<span class="nc" id="L391">            interfaces[0] = first;</span>
+        } else {
+<span class="nc" id="L393">            @NotNull List&lt;T&gt; objs = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L394">            objs.add(first);</span>
+<span class="nc" id="L395">            Collections.addAll(objs, additional);</span>
+<span class="nc" id="L396">            interfaces = objs.toArray((T[]) Array.newInstance(first.getClass(), objs.size()));</span>
+        }
+<span class="nc" id="L398">        return interfaces;</span>
+    }
+
+    public static boolean matchingClass(@NotNull Class base, @NotNull Class toMatch) {
+<span class="nc bnc" id="L402" title="All 2 branches missed.">        return base == toMatch</span>
+<span class="nc bnc" id="L403" title="All 4 branches missed.">                || base.isInterface() &amp;&amp; interfaceToDefaultClass.get(base) == toMatch</span>
+<span class="nc bnc" id="L404" title="All 4 branches missed.">                || Enum.class.isAssignableFrom(toMatch) &amp;&amp; base.equals(toMatch.getEnclosingClass());</span>
+    }
+
+    @NotNull
+    public static &lt;T&gt; T printAll(@NotNull Class&lt;T&gt; tClass, Class... additional) throws IllegalArgumentException {
+<span class="nc" id="L409">        return onMethodCall((method, args) -&gt; {</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">            @NotNull String argsStr = args == null ? &quot;()&quot; : Arrays.toString(args);</span>
+<span class="nc" id="L411">            System.out.println(method.getName() + &quot; &quot; + argsStr);</span>
+<span class="nc" id="L412">            return defaultValue(method.getReturnType());</span>
+        }, tClass, additional);
+    }
+
+    public static Object defaultValue(Class&lt;?&gt; type) {
+<span class="fc" id="L417">        return DEFAULT_MAP.get(type);</span>
+    }
+
+    @NotNull
+    public static &lt;T&gt; T onMethodCall(@NotNull BiFunction&lt;Method, Object[], Object&gt; biFunction, @NotNull Class&lt;T&gt; tClass, Class... additional) throws IllegalArgumentException {
+<span class="nc" id="L422">        Class[] interfaces = addAll(tClass, additional);</span>
+        //noinspection unchecked
+<span class="nc" id="L424">        return (T) Proxy.newProxyInstance(tClass.getClassLoader(), interfaces, new InvocationHandler() {</span>
+            @Override
+            public Object invoke(Object proxy, @NotNull Method method, Object[] args) throws Throwable {
+<span class="nc bnc" id="L427" title="All 2 branches missed.">                if (method.getDeclaringClass() == Object.class) {</span>
+<span class="nc" id="L428">                    return method.invoke(this, args);</span>
+                }
+<span class="nc" id="L430">                return biFunction.apply(method, args);</span>
+            }
+        });
+    }
+
+    @NotNull
+    public static Class getTypeFor(@NotNull Class clazz, @NotNull Class interfaceClass) {
+<span class="nc" id="L437">        return getTypeFor(clazz, interfaceClass, 0);</span>
+    }
+
+    @NotNull
+    public static Class getTypeFor(@NotNull Class clazz, @NotNull Class interfaceClass, int index) {
+<span class="nc bnc" id="L442" title="All 2 branches missed.">        for (Type type : clazz.getGenericInterfaces()) {</span>
+<span class="nc bnc" id="L443" title="All 2 branches missed.">            if (type instanceof ParameterizedType) {</span>
+<span class="nc" id="L444">                @NotNull ParameterizedType ptype = (ParameterizedType) type;</span>
+<span class="nc bnc" id="L445" title="All 2 branches missed.">                if (interfaceClass.isAssignableFrom((Class&lt;?&gt;) ptype.getRawType())) {</span>
+<span class="nc" id="L446">                    Type type0 = ptype.getActualTypeArguments()[index];</span>
+<span class="nc bnc" id="L447" title="All 2 branches missed.">                    if (type0 instanceof Class)</span>
+<span class="nc" id="L448">                        return (Class) type0;</span>
+<span class="nc" id="L449">                    throw new IllegalArgumentException(&quot;The match super interface for &quot; + clazz + &quot; was not a concrete class, was &quot; + ptype);</span>
+                }
+            }
+        }
+<span class="nc" id="L453">        throw new IllegalArgumentException(&quot;No matching super interface for &quot; + clazz + &quot; which was a &quot; + interfaceClass);</span>
+    }
+
+    public static boolean isConcreteClass(@NotNull Class tClass) {
+<span class="nc bnc" id="L457" title="All 2 branches missed.">        return (tClass.getModifiers() &amp; (Modifier.ABSTRACT | Modifier.INTERFACE)) == 0;</span>
+    }
+
+    public static Object readResolve(@NotNull Object o) {
+<span class="nc" id="L461">        Method readResove = READ_RESOLVE.get(o.getClass());</span>
+<span class="nc bnc" id="L462" title="All 2 branches missed.">        if (readResove == null)</span>
+<span class="nc" id="L463">            return o;</span>
+        try {
+<span class="nc" id="L465">            return readResove.invoke(o);</span>
+<span class="nc" id="L466">        } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L467">            throw Jvm.rethrow(e);</span>
+<span class="nc" id="L468">        } catch (InvocationTargetException e) {</span>
+<span class="nc" id="L469">            throw Jvm.rethrow(e.getCause());</span>
+        }
+    }
+
+    @NotNull
+    public static Boolean toBoolean(String s) {
+<span class="pc bpc" id="L475" title="1 of 2 branches missed.">        if (s == null)</span>
+<span class="nc" id="L476">            return null;</span>
+<span class="fc" id="L477">        s = s.trim();</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">        if (isTrue(s))</span>
+<span class="fc" id="L479">            return Boolean.TRUE;</span>
+<span class="pc bpc" id="L480" title="1 of 2 branches missed.">        if (isFalse(s))</span>
+<span class="fc" id="L481">            return Boolean.FALSE;</span>
+<span class="nc bnc" id="L482" title="All 2 branches missed.">        if (s.isEmpty())</span>
+<span class="nc" id="L483">            return null;</span>
+<span class="nc" id="L484">        Jvm.debug().on(ObjectUtils.class, &quot;Treating '&quot; + s + &quot;' as false&quot;);</span>
+<span class="nc" id="L485">        return Boolean.FALSE;</span>
+    }
+
+    public static Class&lt;?&gt;[] getAllInterfaces(Object o) {
+<span class="nc" id="L489">        Set&lt;Class&lt;?&gt;&gt; results = new HashSet&lt;&gt;();</span>
+<span class="nc" id="L490">        getAllInterfaces(o, results::add);</span>
+<span class="nc" id="L491">        return results.toArray(new Class&lt;?&gt;[results.size()]);</span>
+    }
+
+    public static void getAllInterfaces(Object o, Function&lt;Class&lt;?&gt;, Boolean&gt; accumulator) {
+<span class="nc bnc" id="L495" title="All 2 branches missed.">        if (null == o)</span>
+<span class="nc" id="L496">            return;</span>
+
+<span class="nc bnc" id="L498" title="All 2 branches missed.">        if (null == accumulator)</span>
+<span class="nc" id="L499">            throw new IllegalArgumentException(&quot;Accumulator cannot be null&quot;);</span>
+
+<span class="nc bnc" id="L501" title="All 2 branches missed.">        if (o instanceof Class) {</span>
+<span class="nc" id="L502">            Class clazz = (Class) o;</span>
+
+<span class="nc bnc" id="L504" title="All 2 branches missed.">            if (clazz.isInterface()) {</span>
+<span class="nc bnc" id="L505" title="All 2 branches missed.">                if (accumulator.apply((Class) o)) {</span>
+<span class="nc bnc" id="L506" title="All 2 branches missed.">                    for (Class aClass : clazz.getInterfaces()) {</span>
+<span class="nc" id="L507">                        getAllInterfaces(aClass, accumulator);</span>
+                    }
+                }
+            } else {
+<span class="nc bnc" id="L511" title="All 2 branches missed.">                if (null != clazz.getSuperclass())</span>
+<span class="nc" id="L512">                    getAllInterfaces(clazz.getSuperclass(), accumulator);</span>
+
+<span class="nc bnc" id="L514" title="All 2 branches missed.">                for (Class aClass : clazz.getInterfaces()) {</span>
+<span class="nc" id="L515">                    getAllInterfaces(aClass, accumulator);</span>
+                }
+            }
+<span class="nc" id="L518">        } else {</span>
+<span class="nc" id="L519">            getAllInterfaces(o.getClass(), accumulator);</span>
+        }
+<span class="nc" id="L521">    }</span>
+
+    public static synchronized void defaultObjectForInterface(ThrowingFunction&lt;Class, Class, ClassNotFoundException&gt; defaultObjectForInterface) {
+<span class="nc" id="L524">        interfaceToDefaultClass = ClassLocal.withInitial(c -&gt; {</span>
+            Class c2;
+            try {
+<span class="nc" id="L527">                c2 = defaultObjectForInterface.apply(c);</span>
+<span class="nc" id="L528">            } catch (ClassNotFoundException cne) {</span>
+<span class="nc" id="L529">                Jvm.warn().on(ObjectUtils.class, &quot;Unable to find alias for &quot; + c + &quot; &quot; + cne);</span>
+<span class="nc" id="L530">                c2 = c;</span>
+<span class="nc" id="L531">            }</span>
+<span class="nc" id="L532">            return lookForImplEnum(c2);</span>
+        });
+        // need to reset any cached suppliers.
+<span class="nc" id="L535">        supplierClassLocal = ClassLocal.withInitial(ObjectUtils::supplierForClass);</span>
+<span class="nc" id="L536">    }</span>
+
+    @NotNull
+    protected static Class lookForImplEnum(Class c2) {
+<span class="nc bnc" id="L540" title="All 2 branches missed.">        if (c2.isInterface()) {</span>
+            try {
+<span class="nc" id="L542">                Class c3 = Class.forName(c2.getName() + &quot;s&quot;);</span>
+<span class="nc bnc" id="L543" title="All 2 branches missed.">                if (c2.isAssignableFrom(c3))</span>
+<span class="nc" id="L544">                    return c3;</span>
+<span class="nc" id="L545">            } catch (ClassNotFoundException cne) {</span>
+                // ignored
+<span class="nc" id="L547">            }</span>
+        }
+<span class="nc" id="L549">        return c2;</span>
+    }
+
+    public static &lt;T&gt; Class&lt;T&gt; implementationToUse(Class&lt;T&gt; tClass) {
+<span class="nc bnc" id="L553" title="All 2 branches missed.">        if (tClass.isInterface()) {</span>
+<span class="nc" id="L554">            Class class2 = interfaceToDefaultClass.get(tClass);</span>
+<span class="nc bnc" id="L555" title="All 2 branches missed.">            if (class2 != null)</span>
+<span class="nc" id="L556">                return class2;</span>
+        }
+<span class="nc" id="L558">        return tClass;</span>
+    }
+
+<span class="fc" id="L561">    public enum Immutability {</span>
+<span class="fc" id="L562">        YES, NO, MAYBE</span>
+    }
+
+    private static class ConversionFunction implements Function&lt;Class&lt;?&gt;, ThrowingFunction&lt;String, Object, Exception&gt;&gt; {
+        @Override
+        public ThrowingFunction&lt;String, Object, Exception&gt; apply(@NotNull Class&lt;?&gt; c) {
+<span class="pc bpc" id="L568" title="1 of 2 branches missed.">            if (c == Class.class)</span>
+<span class="nc" id="L569">                return CLASS_ALIASES::forName;</span>
+<span class="pc bpc" id="L570" title="1 of 2 branches missed.">            if (c == Boolean.class)</span>
+<span class="fc" id="L571">                return ObjectUtils::toBoolean;</span>
+<span class="nc bnc" id="L572" title="All 2 branches missed.">            if (c == UUID.class)</span>
+<span class="nc" id="L573">                return UUID::fromString;</span>
+            try {
+<span class="nc" id="L575">                Method valueOf = c.getDeclaredMethod(&quot;valueOf&quot;, String.class);</span>
+<span class="nc" id="L576">                Jvm.setAccessible(valueOf);</span>
+<span class="nc" id="L577">                return s -&gt; valueOf.invoke(null, s);</span>
+<span class="nc" id="L578">            } catch (NoSuchMethodException e) {</span>
+                // ignored
+            }
+
+            try {
+<span class="nc" id="L583">                Method parse = c.getDeclaredMethod(&quot;parse&quot;, CharSequence.class);</span>
+<span class="nc" id="L584">                Jvm.setAccessible(parse);</span>
+<span class="nc" id="L585">                return s -&gt; parse.invoke(null, s);</span>
+
+<span class="nc" id="L587">            } catch (NoSuchMethodException e) {</span>
+                // ignored
+            }
+            try {
+<span class="nc" id="L591">                Constructor constructor = c.getDeclaredConstructor(String.class);</span>
+<span class="nc" id="L592">                Jvm.setAccessible(constructor);</span>
+<span class="nc" id="L593">                return constructor::newInstance;</span>
+<span class="nc" id="L594">            } catch (Exception e) {</span>
+<span class="nc" id="L595">                throw asCCE(e);</span>
+            }
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

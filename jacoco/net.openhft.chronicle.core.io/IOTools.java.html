@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IOTools.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.io</a> &gt; <span class="el_source">IOTools.java</span></div><h1>IOTools.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core.io;
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.OS;
+import net.openhft.chronicle.core.cleaner.CleanerServiceLocator;
+import net.openhft.chronicle.core.util.Time;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.*;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.net.URL;
+import java.nio.ByteBuffer;
+import java.nio.file.*;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
+
+/*
+ * A collection of CONCURRENT utility tools
+ */
+<span class="fc" id="L45">public enum IOTools {</span>
+    ;
+
+<span class="fc" id="L48">    static volatile Map&lt;Class, AtomicInteger&gt; COUNTER_MAP = new ConcurrentHashMap&lt;&gt;();</span>
+
+    public static boolean shallowDeleteDirWithFiles(@NotNull String directory) throws IORuntimeException {
+<span class="nc" id="L51">        return shallowDeleteDirWithFiles(new File(directory));</span>
+    }
+
+    public static boolean shallowDeleteDirWithFiles(@NotNull File dir) throws IORuntimeException {
+<span class="nc" id="L55">        return deleteDirWithFiles(dir, 1);</span>
+    }
+
+    public static boolean deleteDirWithFiles(@NotNull String... dirs) throws IORuntimeException {
+<span class="fc" id="L59">        boolean result = true;</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        for (String dir : dirs) {</span>
+<span class="fc" id="L61">            boolean r = deleteDirWithFiles(dir, 20);</span>
+<span class="fc" id="L62">            result &amp;= r;</span>
+        }
+<span class="fc" id="L64">        return result;</span>
+    }
+
+    public static boolean deleteDirWithFiles(@NotNull String dir, int maxDepth) throws IORuntimeException {
+<span class="fc" id="L68">        return deleteDirWithFiles(new File(dir), maxDepth);</span>
+    }
+
+    public static boolean deleteDirWithFiles(@NotNull File dir) throws IORuntimeException {
+<span class="nc" id="L72">        return deleteDirWithFiles(dir, 20);</span>
+    }
+
+    public static boolean deleteDirWithFiles(@NotNull File dir, int maxDepth) throws IORuntimeException {
+<span class="fc" id="L76">        @Nullable File[] entries = dir.listFiles();</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (entries == null) return false;</span>
+<span class="fc" id="L78">        Stream.of(entries).filter(File::isDirectory).forEach(f -&gt; {</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">            if (maxDepth &lt; 1) {</span>
+<span class="nc" id="L80">                throw new AssertionError(&quot;Contains directory &quot; + f);</span>
+            } else {
+<span class="fc" id="L82">                deleteDirWithFiles(f, maxDepth - 1);</span>
+            }
+<span class="fc" id="L84">        });</span>
+<span class="fc" id="L85">        Stream.of(entries).forEach(f -&gt; {</span>
+            try {
+<span class="fc" id="L87">                Files.delete(f.toPath());</span>
+<span class="fc" id="L88">            } catch (NoSuchFileException fe) {</span>
+                // ignored
+<span class="nc" id="L90">            } catch (IOException e) {</span>
+<span class="nc" id="L91">                Jvm.debug().on(Closeable.class, &quot;Failed to delete &quot; + f, e);</span>
+<span class="fc" id="L92">            }</span>
+<span class="fc" id="L93">        });</span>
+<span class="fc" id="L94">        return dir.delete();</span>
+    }
+
+    public static void deleteDirWithFilesOrThrow(@NotNull String... dirs) throws IORuntimeException {
+<span class="nc" id="L98">        final File[] files = Arrays.stream(dirs).map(File::new).toArray(File[]::new);</span>
+<span class="nc" id="L99">        deleteDirWithFilesOrThrow(files);</span>
+<span class="nc" id="L100">    }</span>
+
+    /**
+     * Canonical usage is to call this *before* your test so you fail fast if you can't delete
+     *
+     * @param dirs dirs
+     * @throws IORuntimeException
+     */
+    public static void deleteDirWithFilesOrThrow(@NotNull File... dirs) throws IORuntimeException {
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        for (File dir : dirs)</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">            if (!deleteDirWithFiles(dir))</span>
+<span class="nc bnc" id="L111" title="All 2 branches missed.">                if (dir.exists())</span>
+<span class="nc" id="L112">                    throw new AssertionError(&quot;Could not delete &quot; + dir);</span>
+<span class="nc" id="L113">    }</span>
+
+    @Deprecated
+    public static URL urlFor(String name) throws FileNotFoundException {
+        // use the callers class loader not the default one if possible.
+<span class="fc" id="L118">        return urlFor(Thread.currentThread().getContextClassLoader(), name);</span>
+    }
+
+    @NotNull
+    public static URL urlFor(Class clazz, String name) throws FileNotFoundException {
+<span class="nc" id="L123">        return urlFor(clazz.getClassLoader(), name);</span>
+    }
+
+    @NotNull
+    public static URL urlFor(ClassLoader classLoader, String name) throws FileNotFoundException {
+<span class="fc" id="L128">        URL url = classLoader.getResource(name);</span>
+<span class="pc bpc" id="L129" title="3 of 4 branches missed.">        if (url == null &amp;&amp; name.startsWith(&quot;/&quot;))</span>
+<span class="nc" id="L130">            url = classLoader.getResource(name.substring(1));</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (url == null)</span>
+<span class="nc" id="L132">            url = classLoader.getResource(name + &quot;.gz&quot;);</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (url == null)</span>
+<span class="nc" id="L134">            throw new FileNotFoundException(name);</span>
+<span class="fc" id="L135">        return url;</span>
+    }
+
+    public static InputStream open(URL url) throws IOException {
+<span class="fc" id="L139">        InputStream in = url.openStream();</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">        if (url.getFile().endsWith(&quot;.gz&quot;))</span>
+<span class="nc" id="L141">            in = new GZIPInputStream(in);</span>
+<span class="fc" id="L142">        return in;</span>
+    }
+
+    /**
+     * This method first looks for the file in the classpath. If this is not found it
+     * appends the suffix .gz and looks again in the classpath to see if it is present.
+     * If it is still not found it looks for the file on the file system. If it not found
+     * it appends the suffix .gz and looks again on the file system.
+     * If it still not found a FileNotFoundException is thrown.
+     *
+     * @param name Name of the file
+     * @return A byte[] containing the contents of the file
+     * @throws IOException FileNotFoundException thrown if file is not found
+     */
+    public static byte[] readFile(@NotNull String name) throws IOException {
+<span class="fc" id="L157">        URL url = urlFor(name);</span>
+<span class="fc" id="L158">        InputStream is = open(url);</span>
+
+<span class="fc" id="L160">        return readAsBytes(is);</span>
+    }
+
+    public static byte[] readFile(Class clazz, @NotNull String name) throws IOException {
+<span class="nc" id="L164">        URL url = urlFor(clazz, name);</span>
+<span class="nc" id="L165">        InputStream is = open(url);</span>
+
+<span class="nc" id="L167">        return readAsBytes(is);</span>
+    }
+
+    public static byte[] readAsBytes(InputStream is) throws IOException {
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">        if (is instanceof FileInputStream) {</span>
+<span class="nc" id="L172">            try (FileInputStream fis = (FileInputStream) is) {</span>
+<span class="nc" id="L173">                byte[] bytes = new byte[fis.available()];</span>
+<span class="nc" id="L174">                int read = fis.read(bytes);</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">                if (read != bytes.length)</span>
+<span class="nc" id="L176">                    throw new AssertionError();</span>
+<span class="nc" id="L177">                return bytes;</span>
+            }
+        }
+        try {
+<span class="fc" id="L181">            @NotNull ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(512, is.available()));</span>
+<span class="fc" id="L182">            @NotNull byte[] bytes = new byte[1024];</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            for (int len; (len = is.read(bytes)) &gt; 0; )</span>
+<span class="fc" id="L184">                out.write(bytes, 0, len);</span>
+<span class="fc" id="L185">            return out.toByteArray();</span>
+        } finally {
+<span class="fc" id="L187">            Closeable.closeQuietly(is);</span>
+        }
+    }
+
+    public static void writeFile(@NotNull String filename, @NotNull byte[] bytes) throws IOException {
+<span class="nc" id="L192">        try (@NotNull OutputStream out0 = new FileOutputStream(filename)) {</span>
+<span class="nc" id="L193">            OutputStream out = out0;</span>
+<span class="nc bnc" id="L194" title="All 2 branches missed.">            if (filename.endsWith(&quot;.gz&quot;))</span>
+<span class="nc" id="L195">                out = new GZIPOutputStream(out);</span>
+<span class="nc" id="L196">            out.write(bytes);</span>
+<span class="nc" id="L197">            out.close();</span>
+        }
+<span class="nc" id="L199">    }</span>
+
+    @NotNull
+    public static String tempName(@NotNull String filename) {
+<span class="nc" id="L203">        int ext = filename.lastIndexOf('.');</span>
+<span class="nc bnc" id="L204" title="All 4 branches missed.">        if (ext &gt; 0 &amp;&amp; ext &gt; filename.length() - 5) {</span>
+<span class="nc" id="L205">            return filename.substring(0, ext) + System.nanoTime() + filename.substring(ext);</span>
+        }
+<span class="nc" id="L207">        return filename + System.nanoTime();</span>
+    }
+
+    public static void clean(ByteBuffer bb) {
+<span class="fc" id="L211">        CleanerServiceLocator.cleanerService().clean(bb);</span>
+<span class="fc" id="L212">    }</span>
+
+    public static void createDirectories(Path dir) throws IOException {
+<span class="pc bpc" id="L215" title="2 of 6 branches missed.">        if (dir == null || dir.getNameCount() == 0 || Files.isDirectory(dir))</span>
+<span class="fc" id="L216">            return;</span>
+<span class="fc" id="L217">        createDirectories(dir.getParent());</span>
+        try {
+<span class="fc" id="L219">            Files.createDirectory(dir);</span>
+<span class="fc" id="L220">        } catch (FileAlreadyExistsException e) {</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">            if (Files.isSymbolicLink(dir))</span>
+<span class="fc" id="L222">                throw new IOException(&quot;Symbolic link from &quot; + dir + &quot; to &quot; + Files.readSymbolicLink(dir) + &quot; is broken&quot;, e);</span>
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">            if (Files.isRegularFile(dir))</span>
+<span class="fc" id="L224">                throw new IOException(&quot;Cannot create a directory with the same name as a file &quot; + dir, e);</span>
+<span class="fc" id="L225">        } catch (AccessDeniedException e) {</span>
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">            if (!dir.toFile().canWrite())</span>
+<span class="fc" id="L227">                throw new IOException(&quot;Cannot write to &quot; + dir, e);</span>
+<span class="pc" id="L228">        }</span>
+<span class="fc" id="L229">    }</span>
+
+    static AtomicInteger counter(Class type) {
+<span class="fc" id="L232">        return COUNTER_MAP.computeIfAbsent(type, k -&gt; new AtomicInteger());</span>
+    }
+
+    public static File createTempFile(String s) {
+<span class="fc" id="L236">        File file = createTempDirectory(s).toFile();</span>
+<span class="fc" id="L237">        file.deleteOnExit();</span>
+<span class="fc" id="L238">        return file;</span>
+    }
+
+    public static Path createTempDirectory(String s) {
+<span class="fc" id="L242">        new File(OS.getTarget()).mkdir();</span>
+<span class="fc" id="L243">        return Paths.get(OS.getTarget(), s + &quot;-&quot; + Time.uniqueId() + &quot;.tmp&quot;);</span>
+    }
+
+    public static void unmonitor(final Object t) {
+<span class="nc" id="L247">        unmonitor(t, 4);</span>
+<span class="nc" id="L248">    }</span>
+
+    private static void unmonitor(final Object t, int depth) {
+<span class="nc bnc" id="L251" title="All 2 branches missed.">        if (t == null)</span>
+<span class="nc" id="L252">            return;</span>
+<span class="nc bnc" id="L253" title="All 4 branches missed.">        if (t instanceof Serializable || t instanceof MonitorReferenceCounted) // old school.</span>
+<span class="nc" id="L254">            return;</span>
+<span class="nc bnc" id="L255" title="All 2 branches missed.">        if (t instanceof Closeable)</span>
+<span class="nc" id="L256">            AbstractCloseable.unmonitor((Closeable) t);</span>
+<span class="nc bnc" id="L257" title="All 2 branches missed.">        if (t instanceof ReferenceCounted)</span>
+<span class="nc" id="L258">            AbstractReferenceCounted.unmonitor((ReferenceCounted) t);</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">        if (depth &gt; 0)</span>
+<span class="nc" id="L260">            unmonitor(t.getClass(), t, depth - 1);</span>
+<span class="nc" id="L261">    }</span>
+
+    private static &lt;T&gt; void unmonitor(Class aClass, Object t, int depth) {
+<span class="nc bnc" id="L264" title="All 4 branches missed.">        if (aClass == null || aClass == Object.class)</span>
+<span class="nc" id="L265">            return;</span>
+<span class="nc" id="L266">        unmonitor(aClass.getSuperclass(), t, depth);</span>
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        for (Field field : aClass.getDeclaredFields()) {</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">            if (field.getType().isPrimitive())</span>
+<span class="nc" id="L269">                continue;</span>
+<span class="nc bnc" id="L270" title="All 2 branches missed.">            if (Modifier.isStatic(field.getModifiers()))</span>
+<span class="nc" id="L271">                continue;</span>
+            try {
+<span class="nc" id="L273">                field.setAccessible(true);</span>
+<span class="nc" id="L274">            } catch (Exception e) {</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">                if (!Jvm.isJava9Plus())</span>
+<span class="nc" id="L276">                    Jvm.warn().on(IOTools.class, e);</span>
+<span class="nc" id="L277">                continue;</span>
+<span class="nc" id="L278">            }</span>
+            try {
+<span class="nc" id="L280">                Object o = field.get(t);</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">                if (o != null)</span>
+<span class="nc" id="L282">                    unmonitor(o, depth);</span>
+<span class="nc" id="L283">            } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L284">                Jvm.warn().on(IOTools.class, e);</span>
+<span class="nc" id="L285">            }</span>
+        }
+<span class="nc" id="L287">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

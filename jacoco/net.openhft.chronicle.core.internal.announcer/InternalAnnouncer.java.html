@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>InternalAnnouncer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.internal.announcer</a> &gt; <span class="el_source">InternalAnnouncer.java</span></div><h1>InternalAnnouncer.java</h1><pre class="source lang-java linenums">package net.openhft.chronicle.core.internal.announcer;
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.announcer.Announcer;
+import net.openhft.chronicle.core.pom.PomProperties;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+
+<span class="nc" id="L13">public enum InternalAnnouncer {</span>
+    ;
+
+<span class="nc" id="L16">    private static final boolean DISABLE_ANNOUNCEMENT = Optional.ofNullable(System.getProperty(&quot;chronicle.announcer.disable&quot;)).filter(&quot;true&quot;::equals).isPresent();</span>
+<span class="nc bnc" id="L17" title="All 2 branches missed.">    private static final Consumer&lt;String&gt; LINE_PRINTER = DISABLE_ANNOUNCEMENT ? s -&gt; {} : System.out::println;</span>
+<span class="nc" id="L18">    private static final AtomicBoolean JVM_ANNOUNCED = new AtomicBoolean();</span>
+<span class="nc" id="L19">    private static final Map&lt;String, Set&lt;String&gt;&gt; ANNOUNCED_GROUP_IDS = new ConcurrentHashMap&lt;&gt;();</span>
+
+    public static void announce(@NotNull final String groupId,
+                                @NotNull final String artifactId,
+                                @NotNull final Map&lt;String, String&gt; properties) {
+<span class="nc bnc" id="L24" title="All 2 branches missed.">        if (JVM_ANNOUNCED.compareAndSet(false, true)) {</span>
+<span class="nc" id="L25">            announceJvm();</span>
+        }
+<span class="nc bnc" id="L27" title="All 2 branches missed.">        if (alwaysAnnounce(properties)) {</span>
+<span class="nc" id="L28">            announceArtifact(groupId, artifactId, properties);</span>
+        } else {
+            // Only announce once
+<span class="nc" id="L31">            final Set&lt;String&gt; announcedArtifacts = ANNOUNCED_GROUP_IDS.computeIfAbsent(groupId, unused -&gt; Collections.newSetFromMap(new ConcurrentHashMap&lt;&gt;()));</span>
+<span class="nc bnc" id="L32" title="All 2 branches missed.">            if (announcedArtifacts.add(artifactId)) {</span>
+<span class="nc" id="L33">                announceArtifact(groupId, artifactId, properties);</span>
+            }
+        }
+<span class="nc" id="L36">    }</span>
+
+    private static void announceJvm() {
+<span class="nc" id="L39">        LINE_PRINTER.accept(String.format(&quot;Running under %s %s with %d processors reported.&quot;,</span>
+<span class="nc" id="L40">                System.getProperty(&quot;java.runtime.name&quot;),</span>
+<span class="nc" id="L41">                System.getProperty(&quot;java.runtime.version&quot;),</span>
+<span class="nc" id="L42">                Runtime.getRuntime().availableProcessors()));</span>
+<span class="nc" id="L43">        LINE_PRINTER.accept(&quot;Process id: &quot; + Jvm.getProcessId());</span>
+<span class="nc" id="L44">    }</span>
+
+    private static void announceArtifact(@NotNull final String groupId,
+                                         @NotNull final String artifactId,
+                                         @NotNull final Map&lt;String, String&gt; properties) {
+<span class="nc" id="L49">        final Map&lt;String, String&gt; propertiesCopy = new LinkedHashMap&lt;&gt;(properties);</span>
+<span class="nc" id="L50">        final String logo = propertiesCopy.remove(Announcer.LOGO);</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">        if (logo != null) {</span>
+<span class="nc" id="L52">            LINE_PRINTER.accept(logo);</span>
+        }
+<span class="nc" id="L54">        final String version = PomProperties.version(groupId, artifactId);</span>
+<span class="nc" id="L55">        final String artifactInfo = String.format(&quot;:: %s :: (%s)&quot;, pretty(artifactId), version);</span>
+<span class="nc" id="L56">        LINE_PRINTER.accept(artifactInfo);</span>
+
+<span class="nc" id="L58">        final int indent = propertiesCopy.keySet().stream()</span>
+<span class="nc" id="L59">                .mapToInt(String::length)</span>
+<span class="nc" id="L60">                .max()</span>
+<span class="nc" id="L61">                .orElse(0);</span>
+
+<span class="nc" id="L63">        final String formatString = &quot;%-&quot;+indent+&quot;s: %s&quot;;</span>
+
+<span class="nc" id="L65">        propertiesCopy.entrySet().stream()</span>
+<span class="nc" id="L66">                .map((e) -&gt; String.format(formatString, e.getKey(), e.getValue()))</span>
+<span class="nc" id="L67">                .forEach(LINE_PRINTER);</span>
+
+<span class="nc" id="L69">    }</span>
+
+    // Convert &quot;chronicle-queue&quot; to &quot;Chronicle Queue&quot;
+    private static String pretty(@NotNull final String artifactId) {
+<span class="nc" id="L73">        final StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L74">        boolean makeUpperCase = true;</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        for (char c:artifactId.toCharArray()) {</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">            if (makeUpperCase) {</span>
+<span class="nc" id="L77">                sb.append(Character.toUpperCase(c));</span>
+<span class="nc" id="L78">                makeUpperCase = false;</span>
+<span class="nc" id="L79">                continue;</span>
+            }
+<span class="nc bnc" id="L81" title="All 2 branches missed.">            if ('-' == c) {</span>
+<span class="nc" id="L82">                makeUpperCase = true;</span>
+<span class="nc" id="L83">                sb.append(' ');</span>
+<span class="nc" id="L84">                continue;</span>
+            }
+<span class="nc" id="L86">            sb.append(c);</span>
+        }
+<span class="nc" id="L88">        return sb.toString();</span>
+    }
+
+    private static boolean alwaysAnnounce(@NotNull final Map&lt;String, String&gt; properties) {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        if (properties.isEmpty())</span>
+<span class="nc" id="L93">            return false;</span>
+<span class="nc bnc" id="L94" title="All 2 branches missed.">        if (properties.size() == 1)</span>
+            // If there is only a &quot;logo&quot; key, then only announce once
+<span class="nc" id="L96">            return properties.containsKey(&quot;logo&quot;);</span>
+<span class="nc" id="L97">        return true;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

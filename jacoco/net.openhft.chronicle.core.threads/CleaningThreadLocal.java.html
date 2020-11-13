@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CleaningThreadLocal.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.threads</a> &gt; <span class="el_source">CleaningThreadLocal.java</span></div><h1>CleaningThreadLocal.java</h1><pre class="source lang-java linenums">package net.openhft.chronicle.core.threads;
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.io.Closeable;
+import net.openhft.chronicle.core.util.ThrowingConsumer;
+
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+/**
+ * This will clean up a resource if the CleaningThread holding it dies.
+ * &lt;p&gt;
+ * Note: this will not clean up the resource if the ThreadLocal itself is discarded.
+ */
+public class CleaningThreadLocal&lt;T&gt; extends ThreadLocal&lt;T&gt; {
+    private final Supplier&lt;T&gt; supplier;
+    private final Function&lt;T, T&gt; getWrapper;
+    private ThrowingConsumer&lt;T, Exception&gt; cleanup;
+
+    CleaningThreadLocal(Supplier&lt;T&gt; supplier, ThrowingConsumer&lt;T, Exception&gt; cleanup) {
+<span class="fc" id="L21">        this(supplier, cleanup, Function.identity());</span>
+<span class="fc" id="L22">    }</span>
+
+<span class="fc" id="L24">    CleaningThreadLocal(Supplier&lt;T&gt; supplier, ThrowingConsumer&lt;T, Exception&gt; cleanup, Function&lt;T, T&gt; getWrapper) {</span>
+<span class="fc" id="L25">        this.supplier = supplier;</span>
+<span class="fc" id="L26">        this.cleanup = cleanup;</span>
+<span class="fc" id="L27">        this.getWrapper = getWrapper;</span>
+<span class="fc" id="L28">    }</span>
+
+    @Deprecated(/* remove in x.21*/)
+    public static &lt;T&gt; CleaningThreadLocal&lt;T&gt; withCloseQuietly() {
+<span class="nc" id="L32">        return new CleaningThreadLocal&lt;&gt;(() -&gt; null, Closeable::closeQuietly);</span>
+    }
+
+    public static &lt;T&gt; CleaningThreadLocal&lt;T&gt; withCloseQuietly(Supplier&lt;T&gt; supplier) {
+<span class="nc" id="L36">        return new CleaningThreadLocal&lt;&gt;(supplier, Closeable::closeQuietly);</span>
+    }
+
+    public static &lt;T&gt; CleaningThreadLocal&lt;T&gt; withCleanup(ThrowingConsumer&lt;T, Exception&gt; cleanup) {
+<span class="nc" id="L40">        return new CleaningThreadLocal&lt;&gt;(() -&gt; null, cleanup);</span>
+    }
+
+    public static &lt;T&gt; CleaningThreadLocal&lt;T&gt; withCleanup(Supplier&lt;T&gt; supplier, ThrowingConsumer&lt;T, Exception&gt; cleanup) {
+<span class="fc" id="L44">        return new CleaningThreadLocal&lt;&gt;(supplier, cleanup);</span>
+    }
+
+    @Deprecated(/* remove in x.21*/)
+    public static &lt;T&gt; CleaningThreadLocal&lt;T&gt; withCleanup(Supplier&lt;T&gt; supplier, ThrowingConsumer&lt;T, Exception&gt; cleanup, Function&lt;T, T&gt; getWrapper) {
+<span class="nc" id="L49">        return new CleaningThreadLocal&lt;&gt;(supplier, cleanup, getWrapper);</span>
+    }
+
+    @Override
+    protected T initialValue() {
+<span class="fc" id="L54">        return supplier.get();</span>
+    }
+
+    @Override
+    public T get() {
+<span class="fc" id="L59">        return getWrapper.apply(super.get());</span>
+    }
+
+    public synchronized void cleanup(T value) {
+        try {
+<span class="fc" id="L64">            ThrowingConsumer&lt;T, Exception&gt; cleanup = this.cleanup;</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">            if (cleanup != null)</span>
+<span class="fc" id="L66">                cleanup.accept(value);</span>
+<span class="fc" id="L67">            this.cleanup = null;</span>
+<span class="nc" id="L68">        } catch (Exception e) {</span>
+<span class="nc" id="L69">            Jvm.warn().on(getClass(), &quot;Exception cleaning up &quot; + value.getClass(), e);</span>
+<span class="fc" id="L70">        }</span>
+<span class="fc" id="L71">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

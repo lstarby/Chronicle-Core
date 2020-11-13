@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VanillaReferenceCounted.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.io</a> &gt; <span class="el_source">VanillaReferenceCounted.java</span></div><h1>VanillaReferenceCounted.java</h1><pre class="source lang-java linenums">package net.openhft.chronicle.core.io;
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.StackTrace;
+import net.openhft.chronicle.core.UnsafeMemory;
+import net.openhft.chronicle.core.annotation.UsedViaReflection;
+import net.openhft.chronicle.core.onoes.Slf4jExceptionHandler;
+
+import static net.openhft.chronicle.core.UnsafeMemory.UNSAFE;
+import static net.openhft.chronicle.core.io.TracingReferenceCounted.asString;
+
+public final class VanillaReferenceCounted implements MonitorReferenceCounted {
+
+    private static final long VALUE;
+
+    static {
+<span class="fc" id="L17">        VALUE = UNSAFE.objectFieldOffset(Jvm.getField(VanillaReferenceCounted.class, &quot;value&quot;));</span>
+<span class="fc" id="L18">    }</span>
+
+    private final Runnable onRelease;
+    // must be volatile
+<span class="fc" id="L22">    @UsedViaReflection</span>
+    private volatile int value = 1;
+<span class="fc" id="L24">    private volatile boolean released = false;</span>
+
+<span class="fc" id="L26">    VanillaReferenceCounted(final Runnable onRelease) {</span>
+<span class="fc" id="L27">        this.onRelease = onRelease;</span>
+<span class="fc" id="L28">    }</span>
+
+    @Override
+    public StackTrace createdHere() {
+<span class="nc" id="L32">        return null;</span>
+    }
+
+    @Override
+    public boolean reservedBy(ReferenceOwner owner) {
+<span class="nc bnc" id="L37" title="All 2 branches missed.">        if (refCount() &lt;= 0)</span>
+<span class="nc" id="L38">            throw new IllegalStateException(&quot;No reservations for &quot; + asString(owner));</span>
+        // otherwise not sure.
+<span class="nc" id="L40">        return true;</span>
+    }
+
+    @Override
+    public void reserve(ReferenceOwner id) throws IllegalStateException {
+        for (; ; ) {
+
+<span class="fc" id="L47">            int v = value;</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">            if (v &lt;= 0) {</span>
+<span class="nc" id="L49">                throw new ClosedIllegalStateException(&quot;Released&quot;);</span>
+            }
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">            if (valueCompareAndSet(v, v + 1)) {</span>
+<span class="fc" id="L52">                break;</span>
+            }
+<span class="nc" id="L54">        }</span>
+<span class="fc" id="L55">    }</span>
+
+    @Override
+    public void reserveTransfer(ReferenceOwner from, ReferenceOwner to) throws IllegalStateException {
+<span class="nc" id="L59">        throwExceptionIfReleased();</span>
+<span class="nc" id="L60">    }</span>
+
+    @Override
+    public boolean tryReserve(ReferenceOwner id) {
+        for (; ; ) {
+<span class="nc" id="L65">            int v = value;</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">            if (v &lt;= 0)</span>
+<span class="nc" id="L67">                return false;</span>
+
+<span class="nc bnc" id="L69" title="All 2 branches missed.">            if (valueCompareAndSet(v, v + 1)) {</span>
+<span class="nc" id="L70">                return true;</span>
+            }
+<span class="nc" id="L72">        }</span>
+    }
+
+    private boolean valueCompareAndSet(int from, int to) {
+<span class="fc" id="L76">        return UnsafeMemory.UNSAFE.compareAndSwapInt(this, VALUE, from, to);</span>
+    }
+
+    @Override
+    public void release(ReferenceOwner id) throws IllegalStateException {
+        for (; ; ) {
+<span class="fc" id="L82">            int v = value;</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">            if (v &lt;= 0) {</span>
+<span class="nc" id="L84">                throw new ClosedIllegalStateException(&quot;Released&quot;);</span>
+            }
+<span class="fc" id="L86">            int count = v - 1;</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            if (valueCompareAndSet(v, count)) {</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                if (count == 0) {</span>
+<span class="fc" id="L89">                    callOnRelease();</span>
+                }
+                break;
+            }
+<span class="nc" id="L93">        }</span>
+<span class="fc" id="L94">    }</span>
+
+    public void callOnRelease() {
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (released)</span>
+<span class="nc" id="L98">            throw new ClosedIllegalStateException(&quot;Already released&quot;);</span>
+<span class="fc" id="L99">        released = true;</span>
+<span class="fc" id="L100">        onRelease.run();</span>
+<span class="fc" id="L101">    }</span>
+
+    @Override
+    public void releaseLast(ReferenceOwner id) throws IllegalStateException {
+        for (; ; ) {
+<span class="fc" id="L106">            int v = value;</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            if (v &lt;= 0) {</span>
+<span class="nc" id="L108">                throw new ClosedIllegalStateException(&quot;Released&quot;);</span>
+            }
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">            if (v &gt; 1) {</span>
+<span class="nc" id="L111">                throw new IllegalStateException(&quot;Not the last released&quot;);</span>
+            }
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">            if (valueCompareAndSet(1, 0)) {</span>
+<span class="fc" id="L114">                callOnRelease();</span>
+<span class="fc" id="L115">                break;</span>
+            }
+<span class="nc" id="L117">        }</span>
+<span class="fc" id="L118">    }</span>
+
+    @Override
+    public int refCount() {
+<span class="fc" id="L122">        return value;</span>
+    }
+
+    public String toString() {
+<span class="nc" id="L126">        return Integer.toString(value);</span>
+    }
+
+    @Override
+    public void throwExceptionIfNotReleased() {
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (refCount() &gt; 0)</span>
+<span class="nc" id="L132">            throw new IllegalStateException(&quot;Still reserved, count=&quot; + refCount());</span>
+<span class="nc" id="L133">    }</span>
+
+    @Override
+    public void warnAndReleaseIfNotReleased() {
+<span class="nc bnc" id="L137" title="All 2 branches missed.">        if (refCount() &gt; 0) {</span>
+<span class="nc" id="L138">            Slf4jExceptionHandler.WARN.on(getClass(), &quot;Discarded without being released&quot;);</span>
+<span class="nc" id="L139">            callOnRelease();</span>
+        }
+<span class="nc" id="L141">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

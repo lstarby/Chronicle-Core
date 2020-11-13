@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Timer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.threads</a> &gt; <span class="el_source">Timer.java</span></div><h1>Timer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ *  Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ *  you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
+package net.openhft.chronicle.core.threads;
+
+import net.openhft.chronicle.core.Jvm;
+import org.jetbrains.annotations.NotNull;
+
+public class Timer {
+
+    @NotNull
+    private final EventLoop eventLoop;
+
+    /**
+     * @param eventLoop the event loop that the timer task is run on
+     */
+<span class="nc" id="L33">    public Timer(@NotNull EventLoop eventLoop) {</span>
+<span class="nc" id="L34">        this.eventLoop = eventLoop;</span>
+<span class="nc" id="L35">    }</span>
+
+    /**
+     * uses the event loop thread to call the event handler periodically, the time that the event is
+     * called back is best efforts, but if the thread is busy that call back maybe delayed
+     *
+     * @param eventHandler   the handler to be called back
+     * @param initialDelayMs how long in milliseconds to wait before being called back
+     * @param periodMs       the poll interval of being called
+     */
+    public void scheduleAtFixedRate(@NotNull VanillaEventHandler eventHandler,
+                                    long initialDelayMs,
+                                    long periodMs) {
+<span class="nc" id="L48">        eventLoop.addHandler(new ScheduledEventHandler(eventHandler, initialDelayMs, periodMs));</span>
+<span class="nc" id="L49">    }</span>
+
+    public void schedule(@NotNull Runnable eventHandler, long initialDelayMs) {
+<span class="nc" id="L52">        eventLoop.addHandler(new ScheduledEventHandler(() -&gt; {</span>
+<span class="nc" id="L53">            eventHandler.run();</span>
+<span class="nc" id="L54">            throw new InvalidEventHandlerException(&quot;just runs once&quot;);</span>
+        }, initialDelayMs, 0));
+<span class="nc" id="L56">    }</span>
+
+    private class ScheduledEventHandler implements EventHandler {
+
+        @NotNull
+        private final VanillaEventHandler eventHandler;
+        private final long initialDelayMs;
+        private final long periodMs;
+
+<span class="nc" id="L65">        private boolean isFirstTime = true;</span>
+<span class="nc" id="L66">        private long lastTimeRan = System.currentTimeMillis();</span>
+
+        private ScheduledEventHandler(@NotNull VanillaEventHandler eventHandler,
+                                      long initialDelayMs,
+<span class="nc" id="L70">                                      long periodMs) {</span>
+<span class="nc" id="L71">            this.initialDelayMs = initialDelayMs;</span>
+<span class="nc" id="L72">            this.periodMs = periodMs;</span>
+<span class="nc" id="L73">            this.eventHandler = eventHandler;</span>
+<span class="nc" id="L74">        }</span>
+
+        @Override
+        public boolean action() throws InvalidEventHandlerException, InterruptedException {
+
+<span class="nc" id="L79">            long currentTime = System.currentTimeMillis();</span>
+
+<span class="nc bnc" id="L81" title="All 2 branches missed.">            if (lastTimeRan + waitTimeMs() &gt; currentTime)</span>
+<span class="nc" id="L82">                return false;</span>
+
+<span class="nc" id="L84">            isFirstTime = false;</span>
+<span class="nc" id="L85">            lastTimeRan = currentTime;</span>
+
+            try {
+<span class="nc" id="L88">                return eventHandler.action();</span>
+<span class="nc" id="L89">            } catch (RuntimeException e) {</span>
+<span class="nc" id="L90">                Jvm.warn().on(getClass(), &quot;Unexpected runtime exception&quot;, e);</span>
+            }
+
+<span class="nc" id="L93">            return false;</span>
+        }
+
+        private long waitTimeMs() {
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (!isFirstTime)</span>
+<span class="nc" id="L98">                return periodMs;</span>
+
+<span class="nc" id="L100">            return initialDelayMs;</span>
+        }
+
+        @Override
+        @NotNull
+        public HandlerPriority priority() {
+<span class="nc" id="L106">            return HandlerPriority.TIMER;</span>
+        }
+
+        @Override
+        public String toString() {
+<span class="nc" id="L111">            return &quot;ScheduledEventHandler&lt;&quot; + eventHandler + '&gt;';</span>
+        }
+    }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

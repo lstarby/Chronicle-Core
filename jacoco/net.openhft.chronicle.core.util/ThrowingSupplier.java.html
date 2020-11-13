@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ThrowingSupplier.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.util</a> &gt; <span class="el_source">ThrowingSupplier.java</span></div><h1>ThrowingSupplier.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ *  Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ *  you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
+package net.openhft.chronicle.core.util;
+
+import net.openhft.chronicle.core.Jvm;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.function.Supplier;
+
+/**
+ * &lt;p&gt;
+ * Represents a supplier of results which might throw an Exception
+ * &lt;/p&gt;&lt;p&gt;
+ * There is no requirement that a new or distinct result be returned each
+ * time the supplier is invoked.
+ * &lt;/p&gt;&lt;p&gt;
+ * This is a &lt;a href=&quot;package-summary.html&quot;&gt;functional interface&lt;/a&gt;
+ * whose functional method is {@link #get()}.
+ * &lt;/p&gt;
+ *
+ * @param &lt;V&gt; the type of results supplied by this supplier
+ * @param &lt;T&gt; the type of exception thrown by this supplier
+ */
+@FunctionalInterface
+public interface ThrowingSupplier&lt;V, T extends Throwable&gt; {
+
+    static &lt;V, T extends Throwable&gt; Supplier&lt;V&gt; asSupplier(@NotNull ThrowingSupplier&lt;V, T&gt; throwingSupplier) {
+<span class="nc" id="L45">        return () -&gt; {</span>
+            try {
+<span class="nc" id="L47">                return throwingSupplier.get();</span>
+
+<span class="nc" id="L49">            } catch (Throwable t) {</span>
+<span class="nc" id="L50">                throw Jvm.rethrow(t);</span>
+            }
+        };
+    }
+
+    /**
+     * Gets a result.
+     *
+     * @return a result
+     */
+    @NotNull
+    V get() throws T;
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

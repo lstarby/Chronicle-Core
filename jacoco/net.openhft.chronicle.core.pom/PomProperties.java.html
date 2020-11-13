@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PomProperties.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.pom</a> &gt; <span class="el_source">PomProperties.java</span></div><h1>PomProperties.java</h1><pre class="source lang-java linenums">package net.openhft.chronicle.core.pom;
+
+import net.openhft.chronicle.core.internal.pom.InternalPomPropertiesUtil;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Properties;
+
+public final class PomProperties {
+
+    private PomProperties() {}
+
+    /**
+     * Creates and returns a new instance of Properties for the provided parameters.
+     * &lt;p&gt;
+     * The provided {@code libraryName} is used to pick up properties from a resource named
+     * {@code /META-INF/maven/${groupId}/${artifactId}/pom.properties }
+     * e.g. &quot;/META-INF/maven/net.openhft/chronicle-queue/pom.properties&quot;. If no such resource
+     * exist, an empty Properties instance is returned.
+     *
+      * @param groupId name of the group (e.g. net.openhft)
+      * @param artifactId name of the library (e.g. chronicle-queue)
+     * @return a new instance of Properties for the provided parameters.
+     */
+    @NotNull
+    public static Properties create(@NotNull final String groupId, @NotNull final String artifactId) {
+<span class="nc" id="L26">        return InternalPomPropertiesUtil.create(groupId, artifactId);</span>
+    }
+
+    /**
+     * Returns the GAV version for the provided parameters, or &quot;unknown&quot; if
+     * the version cannot be determined.
+     * &lt;p&gt;
+     * The provided {@code libraryName} is used the same way as for
+     * {@link #create(String, String)}.
+     *
+     * @param groupId name of the group (e.g. net.openhft)
+     * @param artifactId name of the library (e.g. chronicle-queue)
+     * @return the GAV version for the provided parameters, or &quot;unknown&quot; if
+     *         the version cannot be determined
+     * 
+     * @see #create(String, String)
+     */
+    public static String version(@NotNull final String groupId, @NotNull final String artifactId) {
+<span class="nc" id="L44">        return InternalPomPropertiesUtil.version(groupId, artifactId);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

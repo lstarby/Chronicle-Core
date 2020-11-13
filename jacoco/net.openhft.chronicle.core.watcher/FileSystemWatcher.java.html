@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FileSystemWatcher.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.watcher</a> &gt; <span class="el_source">FileSystemWatcher.java</span></div><h1>FileSystemWatcher.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package net.openhft.chronicle.core.watcher;
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.OS;
+import net.openhft.chronicle.core.io.Closeable;
+
+import java.io.IOException;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.stream.Stream;
+
+import static java.nio.file.StandardWatchEventKinds.*;
+
+public class FileSystemWatcher {
+    private final WatchService watchService;
+    // shared
+<span class="fc" id="L38">    private final Map&lt;WatchKey, PathInfo&gt; watchKeyToPathMap = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="fc" id="L39">    private final Set&lt;WatchKey&gt; watchKeysToRemove = new CopyOnWriteArraySet&lt;&gt;();</span>
+<span class="fc" id="L40">    private final BlockingQueue&lt;WatcherListener&gt; listenersToAdd = new LinkedBlockingQueue&lt;&gt;();</span>
+<span class="fc" id="L41">    private volatile boolean running = true;</span>
+    // only used by the watcher thread.
+<span class="fc" id="L43">    private final List&lt;WatcherListener&gt; listeners = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L44">    private final Thread thread = new Thread(this::run, &quot;watcher&quot;);</span>
+
+<span class="fc" id="L46">    public FileSystemWatcher() throws IOException {</span>
+<span class="fc" id="L47">        watchService = FileSystems.getDefault().newWatchService();</span>
+<span class="fc" id="L48">    }</span>
+
+    private static String p(String path) {
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        return OS.isWindows() ? path.replace('\\', '/') : path;</span>
+    }
+
+    public void addPath(String directory) {
+<span class="fc" id="L55">        addPath(directory, &quot;&quot;);</span>
+<span class="fc" id="L56">    }</span>
+
+    public void addPath(String base, String relative) {
+<span class="fc" id="L59">        Path base0 = Paths.get(base);</span>
+<span class="fc" id="L60">        Path base2 = base0.resolve(relative);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (Files.isDirectory(base2)) {</span>
+<span class="fc" id="L62">            try (Stream&lt;Path&gt; paths = Files.walk(base2, 8, FileVisitOption.FOLLOW_LINKS)) {</span>
+<span class="fc" id="L63">                paths.forEach(full -&gt; addPath0(base0, full));</span>
+
+<span class="nc" id="L65">            } catch (IOException e) {</span>
+<span class="nc" id="L66">                Jvm.warn().on(FileSystemWatcher.class, &quot;Couldn't walk path &quot; + base, e);</span>
+<span class="fc" id="L67">            }</span>
+            try {
+<span class="fc" id="L69">                bootstrapPath(listeners, base, relative);</span>
+<span class="nc" id="L70">            } catch (IOException e) {</span>
+<span class="nc" id="L71">                Jvm.warn().on(FileSystemWatcher.class, &quot;Couldn't walk path &quot; + base, e);</span>
+<span class="fc" id="L72">            }</span>
+        }
+<span class="fc" id="L74">    }</span>
+
+    void addPath0(Path base, Path full) {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (Files.isDirectory(full)) {</span>
+            try {
+<span class="fc" id="L79">                String basePath = base.toString();</span>
+<span class="fc" id="L80">                watchKeyToPathMap.put(full.register(</span>
+                        watchService,
+                        StandardWatchEventKinds.ENTRY_CREATE,
+                        StandardWatchEventKinds.ENTRY_DELETE,
+                        StandardWatchEventKinds.ENTRY_MODIFY),
+<span class="fc" id="L85">                        new PathInfo(basePath, full.toString()));</span>
+<span class="nc" id="L86">            } catch (IOException e) {</span>
+<span class="nc" id="L87">                Jvm.warn().on(FileSystemWatcher.class, &quot;Couldn't add path &quot; + full, e);</span>
+<span class="fc" id="L88">            }</span>
+        }
+<span class="fc" id="L90">    }</span>
+
+    public void addListener(WatcherListener listener) {
+<span class="fc" id="L93">        listenersToAdd.add(listener);</span>
+<span class="fc" id="L94">        thread.interrupt();</span>
+<span class="fc" id="L95">    }</span>
+
+    private void removePath(String filename) {
+<span class="fc" id="L98">        watchKeyToPathMap.keySet().stream()</span>
+<span class="fc" id="L99">                .filter(k -&gt; matches(watchKeyToPathMap.get(k), filename))</span>
+<span class="fc" id="L100">                .peek(watchKeysToRemove::add)</span>
+<span class="fc" id="L101">                .forEach(WatchKey::cancel);</span>
+<span class="fc" id="L102">    }</span>
+
+    private boolean matches(PathInfo path, String filename) {
+<span class="fc" id="L105">        String s = path.full;</span>
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">        return s.equals(filename) || s.startsWith(filename + &quot;/&quot;);</span>
+    }
+
+    void run() {
+        WatchKey key;
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        while (running) {</span>
+<span class="fc" id="L112">            List&lt;WatcherListener&gt; list = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L113">            listenersToAdd.drainTo(list);</span>
+<span class="fc" id="L114">            bootstrap(list);</span>
+<span class="fc" id="L115">            listeners.addAll(list);</span>
+
+            try {
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">                if ((key = watchService.take()) == null)</span>
+<span class="nc" id="L119">                    break;</span>
+<span class="fc" id="L120">                PathInfo base = watchKeyToPathMap.get(key);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                for (WatchEvent&lt;?&gt; event : key.pollEvents()) {</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                    for (Iterator&lt;WatcherListener&gt; iterator = listeners.iterator(); iterator.hasNext(); ) {</span>
+<span class="fc" id="L123">                        WatcherListener listener = iterator.next();</span>
+                        try {
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                            if (event.kind() == OVERFLOW) {</span>
+<span class="nc" id="L126">                                Jvm.warn().on(getClass(), &quot;Overflow on watcher events for &quot; + base);</span>
+<span class="nc" id="L127">                                bootstrap(listeners);</span>
+<span class="nc" id="L128">                                continue;</span>
+                            }
+
+                            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L132">                            WatchEvent&lt;Path&gt; event2 = (WatchEvent&lt;Path&gt;) event;</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                            String fullRelative = (base.relativePath.isEmpty() ? &quot;&quot; : base.relativePath + &quot;/&quot;) + event2.context();</span>
+<span class="fc" id="L134">                            String filename = base.basePath + &quot;/&quot; + fullRelative;</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                            if (event.kind() == ENTRY_CREATE) {</span>
+<span class="fc" id="L136">                                listener.onExists(p(base.basePath), p(fullRelative), false);</span>
+<span class="fc" id="L137">                                addPath(base.basePath, fullRelative);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                            } else if (event.kind() == ENTRY_MODIFY) {</span>
+<span class="fc" id="L139">                                listener.onExists(p(base.basePath), p(fullRelative), true);</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                            } else if (event.kind() == ENTRY_DELETE) {</span>
+<span class="fc" id="L141">                                listener.onRemoved(p(base.basePath), p(fullRelative));</span>
+<span class="fc" id="L142">                                removePath(filename);</span>
+                            }
+<span class="nc" id="L144">                        } catch (IllegalStateException ise) {</span>
+<span class="nc" id="L145">                            iterator.remove();</span>
+<span class="fc" id="L146">                        }</span>
+<span class="fc" id="L147">                    }</span>
+<span class="fc" id="L148">                }</span>
+<span class="fc" id="L149">                key.reset();</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">                if (watchKeysToRemove.contains(key)) {</span>
+<span class="nc" id="L151">                    watchKeyToPathMap.remove(key);</span>
+<span class="nc" id="L152">                    watchKeysToRemove.remove(key);</span>
+                }
+<span class="fc" id="L154">            } catch (InterruptedException expected) {</span>
+<span class="fc" id="L155">            }</span>
+<span class="fc" id="L156">        }</span>
+<span class="fc" id="L157">    }</span>
+
+    private void bootstrap(List&lt;WatcherListener&gt; list) {
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        for (PathInfo pathInfo : watchKeyToPathMap.values()) {</span>
+            try {
+<span class="fc" id="L162">                bootstrapPath(list, pathInfo.basePath, &quot;&quot;);</span>
+<span class="nc" id="L163">            } catch (IOException e) {</span>
+<span class="nc" id="L164">                Jvm.warn().on(getClass(), &quot;Failed to walk &quot; + pathInfo, e);</span>
+<span class="fc" id="L165">            }</span>
+<span class="fc" id="L166">        }</span>
+<span class="fc" id="L167">    }</span>
+
+    private void bootstrapPath(List&lt;WatcherListener&gt; list, String base, String relative) throws IOException {
+<span class="fc" id="L170">        Path full = Paths.get(base).resolve(relative);</span>
+<span class="fc" id="L171">        try (Stream&lt;Path&gt; walk = Files.walk(full, 8, FileVisitOption.FOLLOW_LINKS)) {</span>
+<span class="fc" id="L172">            walk.forEach(p -&gt; {</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">                for (Iterator&lt;WatcherListener&gt; iterator = list.iterator(); iterator.hasNext(); ) {</span>
+<span class="fc" id="L174">                    WatcherListener listener = iterator.next();</span>
+<span class="fc" id="L175">                    String pToString = p.toString();</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">                    if (pToString.equals(full.toString()))</span>
+<span class="fc" id="L177">                        continue;</span>
+<span class="fc" id="L178">                    String filename = pToString.substring(base.length() + 1);</span>
+                    try {
+<span class="fc" id="L180">                        listener.onExists(p(base), p(filename), null);</span>
+<span class="nc" id="L181">                    } catch (IllegalStateException ise) {</span>
+<span class="nc" id="L182">                        iterator.remove();</span>
+<span class="fc" id="L183">                    }</span>
+<span class="fc" id="L184">                }</span>
+<span class="fc" id="L185">            });</span>
+        }
+<span class="fc" id="L187">    }</span>
+
+    public void start() {
+<span class="fc" id="L190">        thread.start();</span>
+<span class="fc" id="L191">    }</span>
+
+    public void stop() {
+<span class="fc" id="L194">        running = false;</span>
+<span class="fc" id="L195">        thread.interrupt();</span>
+        try {
+<span class="fc" id="L197">            thread.join(1000);</span>
+<span class="nc" id="L198">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L199">            Thread.currentThread().interrupt();</span>
+<span class="fc" id="L200">        }</span>
+<span class="fc" id="L201">        Closeable.closeQuietly(watchService);</span>
+<span class="fc" id="L202">    }</span>
+
+    static class PathInfo {
+        final String basePath;
+        final String full;
+        final String relativePath;
+
+<span class="fc" id="L209">        public PathInfo(String basePath, String full) {</span>
+<span class="fc" id="L210">            this.basePath = basePath;</span>
+<span class="fc" id="L211">            this.full = full;</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            this.relativePath = basePath.equals(full) ? &quot;&quot; : full.substring(basePath.length() + 1);</span>
+<span class="fc" id="L213">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

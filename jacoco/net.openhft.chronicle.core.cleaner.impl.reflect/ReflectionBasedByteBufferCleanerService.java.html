@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReflectionBasedByteBufferCleanerService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.cleaner.impl.reflect</a> &gt; <span class="el_source">ReflectionBasedByteBufferCleanerService.java</span></div><h1>ReflectionBasedByteBufferCleanerService.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package net.openhft.chronicle.core.cleaner.impl.reflect;
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.cleaner.spi.ByteBufferCleanerService;
+import sun.nio.ch.DirectBuffer;
+
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.nio.ByteBuffer;
+import java.util.logging.Logger;
+
+<span class="fc" id="L30">public final class ReflectionBasedByteBufferCleanerService implements ByteBufferCleanerService {</span>
+    private static final String JDK8_CLEANER_CLASS_NAME = &quot;sun.misc.Cleaner&quot;;
+    private static final String JDK9_CLEANER_CLASS_NAME = &quot;jdk.internal.ref.Cleaner&quot;;
+
+    private static final MethodHandle CLEANER_METHOD;
+    private static final MethodHandle CLEAN_METHOD;
+    private static final Impact IMPACT;
+
+    static {
+<span class="fc" id="L39">        final MethodHandles.Lookup lookup = MethodHandles.lookup();</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">        final String cleanerClassname = Jvm.isJava9Plus()</span>
+                ? JDK9_CLEANER_CLASS_NAME
+                : JDK8_CLEANER_CLASS_NAME;
+<span class="fc" id="L43">        MethodHandle cleaner = null;</span>
+<span class="fc" id="L44">        MethodHandle clean = null;</span>
+<span class="fc" id="L45">        Impact impact = Impact.SOME_IMPACT;</span>
+        try {
+<span class="fc" id="L47">            final Class&lt;?&gt; cleanerClass = Class.forName(cleanerClassname);</span>
+<span class="fc" id="L48">            cleaner = lookup.findVirtual(DirectBuffer.class, &quot;cleaner&quot;, MethodType.methodType(cleanerClass));</span>
+<span class="fc" id="L49">            clean = lookup.findVirtual(cleanerClass, &quot;clean&quot;, MethodType.methodType(void.class));</span>
+<span class="nc" id="L50">        } catch (NoSuchMethodException | ClassNotFoundException | IllegalAccessException e) {</span>
+            // Don't want to record this in tests so just send to slf4j
+<span class="nc" id="L52">            Logger.getLogger(ReflectionBasedByteBufferCleanerService.class.getName())</span>
+<span class="nc" id="L53">                    .warning(&quot;Make sure you have set the command line option &quot; +</span>
+                            &quot;\&quot;--illegal-access=permit --add-exports java.base/jdk.internal.ref=ALL-UNNAMED\&quot; &quot; +
+<span class="nc" id="L55">                            &quot;to enable &quot; + ReflectionBasedByteBufferCleanerService.class.getSimpleName());</span>
+<span class="nc" id="L56">            impact = Impact.UNAVAILABLE;</span>
+<span class="fc" id="L57">        }</span>
+<span class="fc" id="L58">        CLEAN_METHOD = clean;</span>
+<span class="fc" id="L59">        CLEANER_METHOD = cleaner;</span>
+<span class="fc" id="L60">        IMPACT = impact;</span>
+<span class="fc" id="L61">    }</span>
+
+    @Override
+    public void clean(final ByteBuffer buffer) {
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (IMPACT == Impact.UNAVAILABLE) {</span>
+            // There might not be a cleaner after all.
+            // See https://github.com/OpenHFT/Chronicle-Core/issues/140
+<span class="nc" id="L68">            Logger.getLogger(ReflectionBasedByteBufferCleanerService.class.getName())</span>
+<span class="nc" id="L69">                    .warning(&quot;Cleaning is not available. The ByteBuffer 0x&quot; + Integer.toHexString(System.identityHashCode(buffer)) +</span>
+                            &quot; could not be explicitly cleaned and will thus linger until the next GC.&quot;);
+        } else {
+            try {
+<span class="fc" id="L73">                final Object cleaner = CLEANER_METHOD.invoke((DirectBuffer) buffer);</span>
+<span class="fc" id="L74">                CLEAN_METHOD.invoke(cleaner);</span>
+<span class="nc" id="L75">            } catch (Throwable throwable) {</span>
+<span class="nc" id="L76">                throw Jvm.rethrow(throwable);</span>
+<span class="fc" id="L77">            }</span>
+        }
+<span class="fc" id="L79">    }</span>
+
+    @Override
+    public Impact impact() {
+<span class="fc" id="L83">        return IMPACT;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

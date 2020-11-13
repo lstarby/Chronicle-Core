@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BackgroundResourceReleaser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.io</a> &gt; <span class="el_source">BackgroundResourceReleaser.java</span></div><h1>BackgroundResourceReleaser.java</h1><pre class="source lang-java linenums">package net.openhft.chronicle.core.io;
+
+import net.openhft.chronicle.core.Jvm;
+
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+
+<span class="fc" id="L10">public enum BackgroundResourceReleaser {</span>
+    ;
+    public static final String BACKGROUND_RESOURCE_RELEASER = &quot;background~resource~releaser&quot;;
+<span class="fc" id="L13">    static final boolean BG_RELEASER = Jvm.getBoolean(&quot;background.releaser&quot;, true);</span>
+<span class="fc" id="L14">    private static final BlockingQueue&lt;Object&gt; RESOURCES = new ArrayBlockingQueue&lt;&gt;(128);</span>
+<span class="fc" id="L15">    private static final AtomicLong COUNTER = new AtomicLong();</span>
+<span class="fc" id="L16">    private static final Thread RELEASER = new Thread(BackgroundResourceReleaser::runReleaseResources,</span>
+            BACKGROUND_RESOURCE_RELEASER);
+
+    static {
+<span class="fc" id="L20">        RELEASER.setDaemon(true);</span>
+<span class="fc" id="L21">        RELEASER.start();</span>
+<span class="fc" id="L22">    }</span>
+
+    private static void runReleaseResources() {
+        try {
+            for (; ; ) {
+<span class="fc" id="L27">                Object o = RESOURCES.take();</span>
+<span class="fc" id="L28">                performRelease(o);</span>
+<span class="fc" id="L29">            }</span>
+<span class="nc" id="L30">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L31">            Jvm.warn().on(BackgroundResourceReleaser.class, &quot;Died on interrupt&quot;);</span>
+        }
+<span class="nc" id="L33">    }</span>
+
+    public static void release(AbstractCloseable closeable) {
+<span class="fc" id="L36">        release0(closeable);</span>
+<span class="fc" id="L37">    }</span>
+
+    public static void release(AbstractReferenceCounted referenceCounted) {
+<span class="fc" id="L40">        release0(referenceCounted);</span>
+<span class="fc" id="L41">    }</span>
+
+    public static void run(Runnable runnable) {
+<span class="nc" id="L44">        release0(runnable);</span>
+<span class="nc" id="L45">    }</span>
+
+    private static void release0(Object o) {
+<span class="fc" id="L48">        COUNTER.incrementAndGet();</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (RESOURCES.offer(o))</span>
+<span class="fc" id="L50">            return;</span>
+<span class="nc" id="L51">        performRelease(o);</span>
+<span class="nc" id="L52">    }</span>
+
+    public static void releasePendingResources() {
+        try {
+            for (; ; ) {
+<span class="fc" id="L57">                Object o = RESOURCES.poll(1, TimeUnit.MILLISECONDS);</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">                if (o == null)</span>
+<span class="fc" id="L59">                    break;</span>
+<span class="fc" id="L60">                performRelease(o);</span>
+<span class="fc" id="L61">            }</span>
+
+<span class="pc bpc" id="L63" title="1 of 4 branches missed.">            for (int i = 0; i &lt; 1000 &amp;&amp; COUNTER.get() &gt; 0; i++)</span>
+<span class="fc" id="L64">                Jvm.pause(1);</span>
+<span class="fc" id="L65">            long left = COUNTER.get();</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">            if (left != 0)</span>
+<span class="nc" id="L67">                Jvm.warn().on(BackgroundResourceReleaser.class, &quot;Still got &quot; + left + &quot; resources to clean&quot;);</span>
+
+<span class="nc" id="L69">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L70">            Thread.currentThread().interrupt();</span>
+<span class="fc" id="L71">        }</span>
+<span class="fc" id="L72">    }</span>
+
+    private static void performRelease(Object o) {
+        try {
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (o instanceof AbstractCloseable)</span>
+<span class="fc" id="L77">                ((AbstractCloseable) o).callPerformClose();</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">            else if (o instanceof AbstractReferenceCounted)</span>
+<span class="fc" id="L79">                ((AbstractReferenceCounted) o).performRelease();</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">            else if (o instanceof Runnable)</span>
+<span class="nc" id="L81">                ((Runnable) o).run();</span>
+            else
+<span class="nc" id="L83">                Jvm.warn().on(BackgroundResourceReleaser.class, &quot;Don't know how to release a &quot; + o.getClass());</span>
+<span class="nc" id="L84">        } catch (Throwable e) {</span>
+<span class="nc" id="L85">            Jvm.warn().on(BackgroundResourceReleaser.class, &quot;Failed in release/close&quot;, e);</span>
+        } finally {
+<span class="fc" id="L87">            COUNTER.decrementAndGet();</span>
+        }
+<span class="fc" id="L89">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

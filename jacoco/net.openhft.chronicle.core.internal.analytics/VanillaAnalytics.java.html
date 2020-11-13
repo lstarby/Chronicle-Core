@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VanillaAnalytics.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.internal.analytics</a> &gt; <span class="el_source">VanillaAnalytics.java</span></div><h1>VanillaAnalytics.java</h1><pre class="source lang-java linenums">package net.openhft.chronicle.core.internal.analytics;
+
+import net.openhft.chronicle.core.analytics.Analytics;
+import net.openhft.chronicle.core.internal.analytics.google.GoogleAnalytics;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Adds filtering of events per JVM/class-loader
+ */
+final class VanillaAnalytics implements Analytics {
+
+    private static final boolean DISABLE_FILTERING = true;
+
+    private final Analytics delegate;
+<span class="nc" id="L20">    private final Set&lt;Long&gt; reportedFeatures = Collections.newSetFromMap(new ConcurrentHashMap&lt;&gt;());</span>
+
+<span class="nc" id="L22">    public VanillaAnalytics(@NotNull final String libraryName, @NotNull final String version) {</span>
+<span class="nc" id="L23">        delegate = new GoogleAnalytics(libraryName, version);</span>
+<span class="nc" id="L24">    }</span>
+
+    @Override
+    public void onFeature(@NotNull final String id, @NotNull final Map&lt;String, String&gt; eventParameters) {
+<span class="nc" id="L28">        final long hash = 31 * id.hashCode() + eventParameters.hashCode();</span>
+        if (DISABLE_FILTERING || reportedFeatures.add(hash)) {
+<span class="nc" id="L30">            delegate.onFeature(id, eventParameters);</span>
+        }
+<span class="nc" id="L32">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

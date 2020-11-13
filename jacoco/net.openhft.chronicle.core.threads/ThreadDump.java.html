@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ThreadDump.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.threads</a> &gt; <span class="el_source">ThreadDump.java</span></div><h1>ThreadDump.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ *  Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ *  you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
+package net.openhft.chronicle.core.threads;
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.StackTrace;
+import net.openhft.chronicle.core.util.WeakIdentityHashMap;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+public class ThreadDump {
+    public static final String IGNORE_THREAD_IF_IN_NAME = &quot;~&quot;;
+<span class="fc" id="L35">    static final Map&lt;Thread, StackTrace&gt; THREAD_STACK_TRACE_MAP =</span>
+            new WeakIdentityHashMap&lt;&gt;();
+    @NotNull
+    final Set&lt;Thread&gt; threads;
+<span class="fc" id="L39">    final Set&lt;String&gt; ignored = new HashSet&lt;&gt;();</span>
+
+<span class="fc" id="L41">    public ThreadDump() {</span>
+<span class="fc" id="L42">        this.threads = new HashSet&lt;&gt;(Thread.getAllStackTraces().keySet());</span>
+<span class="fc" id="L43">        ignored.add(&quot;Time-limited test&quot;);</span>
+<span class="fc" id="L44">        ignored.add(&quot;Attach Listener&quot;);</span>
+<span class="fc" id="L45">        ignored.add(&quot;process reaper&quot;);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        for (int i = 0, max = Runtime.getRuntime().availableProcessors(); i &lt; max; i++)</span>
+<span class="fc" id="L47">            ignored.add(&quot;ForkJoinPool.commonPool-worker-&quot; + i);</span>
+<span class="fc" id="L48">    }</span>
+
+    public static void add(Thread t, StackTrace stackTrace) {
+<span class="nc bnc" id="L51" title="All 2 branches missed.">        if (Jvm.isResourceTracing())</span>
+<span class="nc" id="L52">            THREAD_STACK_TRACE_MAP.put(t, stackTrace);</span>
+<span class="nc" id="L53">    }</span>
+
+    public static StackTrace createdHereFor(Thread thread) {
+<span class="nc" id="L56">        return THREAD_STACK_TRACE_MAP.get(thread);</span>
+    }
+
+    public void ignore(String threadName) {
+<span class="nc" id="L60">        ignored.add(threadName);</span>
+<span class="nc" id="L61">    }</span>
+
+    /**
+     * Waits for all new threads to finish execution, up for 50ms.
+     * &lt;p&gt;
+     * Then, prints 3 warnings after 0ms, 200ms and 650ms. Then, throws an exception after 800ms.
+     */
+    public void assertNoNewThreads() {
+<span class="fc" id="L69">        assertNoNewThreads(0, TimeUnit.NANOSECONDS);</span>
+<span class="fc" id="L70">    }</span>
+
+    /**
+     * Waits for all new threads to finish execution, up for the specified amount of time ± 50ms.
+     * &lt;p&gt;
+     * Then, prints 3 warnings after 0ms, 200ms and 650ms. Then, throws an exception after 800ms.
+     */
+    public void assertNoNewThreads(int delay, @NotNull TimeUnit delayUnit) {
+<span class="fc" id="L78">        long start = System.nanoTime();</span>
+<span class="fc" id="L79">        long delayNanos = delayUnit.toNanos(delay);</span>
+<span class="fc" id="L80">        @Nullable Map&lt;Thread, StackTraceElement[]&gt; allStackTraces = null;</span>
+<span class="fc" id="L81">        AssertionError ae = null;</span>
+<span class="fc" id="L82">        int last = 4;</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        for (int i = 1; i &lt;= last; ) {</span>
+<span class="fc" id="L84">            Jvm.pause(i * i * 50);</span>
+<span class="fc" id="L85">            allStackTraces = Thread.getAllStackTraces();</span>
+<span class="fc" id="L86">            allStackTraces.keySet().removeAll(threads);</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            if (allStackTraces.isEmpty())</span>
+<span class="fc" id="L88">                return;</span>
+<span class="nc" id="L89">            allStackTraces.keySet()</span>
+<span class="nc" id="L90">                    .removeIf(next -&gt; ignored.stream().anyMatch(item -&gt; next.getName().contains(item)));</span>
+<span class="nc" id="L91">            allStackTraces.keySet()</span>
+<span class="nc" id="L92">                    .removeIf(next -&gt; next.getName().contains(IGNORE_THREAD_IF_IN_NAME));</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">            if (allStackTraces.isEmpty())</span>
+<span class="nc" id="L94">                return;</span>
+<span class="nc bnc" id="L95" title="All 4 branches missed.">            if (i == 1 &amp;&amp; System.nanoTime() - start &lt; delayNanos) {</span>
+<span class="nc" id="L96">                continue;</span>
+            }
+<span class="nc" id="L98">            i++;</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">            if (i == last)</span>
+<span class="nc" id="L100">                ae = new AssertionError(&quot;Threads still running &quot; + allStackTraces.keySet());</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">            for (@NotNull Map.Entry&lt;Thread, StackTraceElement[]&gt; threadEntry : allStackTraces.entrySet()) {</span>
+<span class="nc" id="L102">                @NotNull StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L103">                Thread thread = threadEntry.getKey();</span>
+<span class="nc" id="L104">                sb.append(&quot;Thread still running &quot;).append(thread);</span>
+<span class="nc" id="L105">                Jvm.trimStackTrace(sb, threadEntry.getValue());</span>
+<span class="nc" id="L106">                System.err.println(sb);</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">                if (i == last) {</span>
+<span class="nc" id="L108">                    StackTrace stackTrace = ThreadDump.createdHereFor(thread);</span>
+<span class="nc" id="L109">                    StackTrace st = new StackTrace(thread.toString(), stackTrace);</span>
+<span class="nc" id="L110">                    st.setStackTrace(threadEntry.getValue());</span>
+<span class="nc" id="L111">                    ae.addSuppressed(st);</span>
+                }
+<span class="nc" id="L113">            }</span>
+        }
+<span class="nc" id="L115">        throw ae;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

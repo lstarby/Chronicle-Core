@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Jdk9ByteBufferCleanerService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.cleaner.impl.jdk9</a> &gt; <span class="el_source">Jdk9ByteBufferCleanerService.java</span></div><h1>Jdk9ByteBufferCleanerService.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package net.openhft.chronicle.core.cleaner.impl.jdk9;
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.UnsafeMemory;
+import net.openhft.chronicle.core.annotation.TargetMajorVersion;
+import net.openhft.chronicle.core.cleaner.spi.ByteBufferCleanerService;
+
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.nio.ByteBuffer;
+
+@TargetMajorVersion(majorVersion = 9, includeNewer = true)
+<span class="fc" id="L31">public final class Jdk9ByteBufferCleanerService implements ByteBufferCleanerService {</span>
+
+<span class="fc" id="L33">    private static final MethodHandle INVOKE_CLEANER_METHOD = get_invokeCleaner_Method();</span>
+
+    private static MethodHandle get_invokeCleaner_Method() {
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">        if (!Jvm.isJava9Plus()) {</span>
+<span class="fc" id="L37">            return null;</span>
+        }
+        // Access invokeCleaner() reflectively to support compilation with JDK 8
+<span class="nc" id="L40">        MethodType signature = MethodType.methodType(void.class, ByteBuffer.class);</span>
+        try {
+<span class="nc" id="L42">            return MethodHandles.publicLookup().findVirtual(UnsafeMemory.UNSAFE.getClass(), &quot;invokeCleaner&quot;, signature);</span>
+<span class="nc" id="L43">        } catch (NoSuchMethodException | IllegalAccessException e) {</span>
+<span class="nc" id="L44">            throw new ExceptionInInitializerError(e);</span>
+        }
+    }
+
+    @Override
+    public void clean(final ByteBuffer buffer) {
+        try {
+<span class="nc" id="L51">            INVOKE_CLEANER_METHOD.invokeExact(UnsafeMemory.UNSAFE, buffer);</span>
+<span class="nc" id="L52">        } catch (Throwable throwable) {</span>
+<span class="nc" id="L53">            throw Jvm.rethrow(throwable);</span>
+<span class="nc" id="L54">        }</span>
+<span class="nc" id="L55">    }</span>
+
+    @Override
+    public Impact impact() {
+        // invokeExact() on `static final` method handle is inlined to vanilla method call
+<span class="nc" id="L60">        return Impact.NO_IMPACT;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

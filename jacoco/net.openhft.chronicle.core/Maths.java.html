@@ -1,0 +1,476 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Maths.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core</a> &gt; <span class="el_source">Maths.java</span></div><h1>Maths.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core;
+
+import net.openhft.chronicle.core.util.StringUtils;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Arrays;
+
+<span class="fc" id="L26">public enum Maths {</span>
+    ;
+
+    /**
+     * Numbers larger than this are whole numbers due to representation error.
+     */
+    private static final double WHOLE_NUMBER = 1L &lt;&lt; 52;
+    private static final int K0 = 0x6d0f27bd;
+    private static final int M0 = 0x5bc80bad;
+    private static final int M1 = 0xea7585d7;
+    private static final int M2 = 0x7a646e19;
+    private static final int M3 = 0x855dd4db;
+<span class="fc" id="L38">    private static final long[] TENS = new long[19];</span>
+<span class="fc" id="L39">    private static final long[] FIVES = new long[28];</span>
+
+    static {
+<span class="fc" id="L42">        TENS[0] = FIVES[0] = 1;</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        for (int i = 1; i &lt; TENS.length; i++)</span>
+<span class="fc" id="L44">            TENS[i] = 10 * TENS[i - 1];</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        for (int i = 1; i &lt; FIVES.length; i++)</span>
+<span class="fc" id="L46">            FIVES[i] = 5 * FIVES[i - 1];</span>
+<span class="fc" id="L47">    }</span>
+
+    /**
+     * Performs a round which is accurate to within 1 ulp. i.e. for values very close to 0.5 it
+     * might be rounded up or down. This is a pragmatic choice for performance reasons as it is
+     * assumed you are not working on the edge of the precision of double.
+     *
+     * @param d      value to round
+     * @param digits 0 to 18 digits of precision
+     * @return rounded value
+     */
+    public static double roundN(double d, int digits) {
+<span class="fc" id="L59">        final long factor = roundingFactor(digits);</span>
+<span class="pc bpc" id="L60" title="2 of 4 branches missed.">        return Math.abs(d) &lt; WHOLE_NUMBER / factor</span>
+                ? (double) (long) (d &lt; 0 ? d * factor - 0.5 : d * factor + 0.5) / factor : d;
+    }
+
+    public static long roundingFactor(int digits) {
+<span class="fc" id="L65">        return TENS[digits];</span>
+    }
+
+    public static long roundingFactor(double digits) {
+<span class="fc" id="L69">        int iDigits = (int) digits;</span>
+<span class="fc" id="L70">        long ten = TENS[iDigits];</span>
+
+<span class="pc bpc" id="L72" title="3 of 6 branches missed.">        switch ((int) ((digits - iDigits) * 10 + 0.5)) {</span>
+            case 0:
+            case 1:
+            case 2:
+<span class="nc" id="L76">                return ten;</span>
+            case 3:
+            case 4:
+            case 5:
+<span class="fc" id="L80">                return 2 * ten;</span>
+            case 6:
+<span class="fc" id="L82">                return 4 * ten;</span>
+            case 7:
+            case 8:
+<span class="fc" id="L85">                return 5 * ten;</span>
+            case 9:
+<span class="nc" id="L87">                return 8 * ten;</span>
+            default:
+<span class="nc" id="L89">                return 10 * ten;</span>
+        }
+    }
+
+    public static double ceilN(double d, int digits) {
+<span class="fc" id="L94">        final long factor = roundingFactor(digits);</span>
+<span class="fc" id="L95">        double ulp = Math.ulp(d);</span>
+<span class="fc" id="L96">        double ulp2 = ulp * factor;</span>
+<span class="fc bfc" id="L97" title="All 4 branches covered.">        return Math.abs(d) &lt; (double) Long.MAX_VALUE / factor &amp;&amp; ulp2 &lt; 1</span>
+<span class="fc" id="L98">                ? Math.ceil((d - ulp) * factor) / factor : d;</span>
+    }
+
+    public static double floorN(double d, int digits) {
+<span class="fc" id="L102">        final long factor = roundingFactor(digits);</span>
+<span class="fc" id="L103">        double ulp = Math.ulp(d);</span>
+<span class="fc" id="L104">        double ulp2 = ulp * factor;</span>
+<span class="fc bfc" id="L105" title="All 4 branches covered.">        return Math.abs(d) &lt; (double) Long.MAX_VALUE / factor &amp;&amp; ulp2 &lt; 1</span>
+<span class="fc" id="L106">                ? Math.floor((d + ulp) * factor) / factor : d;</span>
+    }
+
+    public static double roundN(double d, double digits) {
+<span class="fc" id="L110">        final long factor = roundingFactor(digits);</span>
+<span class="pc bpc" id="L111" title="2 of 4 branches missed.">        return Math.abs(d) &lt; (double) Long.MAX_VALUE / factor</span>
+                ? (double) (long) (d &lt; 0 ? d * factor - 0.5 : d * factor + 0.5) / factor : d;
+    }
+
+    public static double ceilN(double d, double digits) {
+<span class="fc" id="L116">        final long factor = roundingFactor(digits + 8);</span>
+<span class="fc" id="L117">        final long factor2 = roundingFactor(digits);</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        return Math.abs(d) &lt; WHOLE_NUMBER / factor</span>
+<span class="pc" id="L119">                ? Math.ceil(Math.round(d * factor) / 1e8) / factor2 : d;</span>
+    }
+
+    public static double floorN(double d, double digits) {
+<span class="fc" id="L123">        final long factor = roundingFactor(digits + 8);</span>
+<span class="fc" id="L124">        final long factor2 = roundingFactor(digits);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        return Math.abs(d) &lt; WHOLE_NUMBER / factor</span>
+<span class="pc" id="L126">                ? Math.floor(Math.round(d * factor) / 1e8) / factor2 : d;</span>
+    }
+
+    /**
+     * Performs a round which is accurate to within 1 ulp. i.e. for values very close to 0.5 it
+     * might be rounded up or down. This is a pragmatic choice for performance reasons as it is
+     * assumed you are not working on the edge of the precision of double.
+     *
+     * @param d value to round
+     * @return rounded value
+     */
+    public static double round1(double d) {
+<span class="fc" id="L138">        final double factor = 1e1;</span>
+<span class="pc bpc" id="L139" title="2 of 4 branches missed.">        return Math.abs(d) &lt; WHOLE_NUMBER / factor</span>
+                ? (long) (d &lt; 0 ? d * factor - 0.5 : d * factor + 0.5) / factor : d;
+    }
+
+    /**
+     * Performs a round which is accurate to within 1 ulp. i.e. for values very close to 0.5 it
+     * might be rounded up or down. This is a pragmatic choice for performance reasons as it is
+     * assumed you are not working on the edge of the precision of double.
+     *
+     * @param d value to round
+     * @return rounded value
+     */
+    public static double round2(double d) {
+<span class="fc" id="L152">        final double factor = 1e2;</span>
+<span class="pc bpc" id="L153" title="2 of 4 branches missed.">        return Math.abs(d) &lt; WHOLE_NUMBER / factor</span>
+                ? (long) (d &lt; 0 ? d * factor - 0.5 : d * factor + 0.5) / factor : d;
+    }
+
+    /**
+     * Performs a round which is accurate to within 1 ulp. i.e. for values very close to 0.5 it
+     * might be rounded up or down. This is a pragmatic choice for performance reasons as it is
+     * assumed you are not working on the edge of the precision of double.
+     *
+     * @param d value to round
+     * @return rounded value
+     */
+    public static double round3(double d) {
+<span class="fc" id="L166">        final double factor = 1e3;</span>
+<span class="pc bpc" id="L167" title="2 of 4 branches missed.">        return Math.abs(d) &lt; WHOLE_NUMBER / factor</span>
+                ? (long) (d &lt; 0 ? d * factor - 0.5 : d * factor + 0.5) / factor : d;
+    }
+
+    /**
+     * Performs a round which is accurate to within 1 ulp. i.e. for values very close to 0.5 it
+     * might be rounded up or down. This is a pragmatic choice for performance reasons as it is
+     * assumed you are not working on the edge of the precision of double.
+     *
+     * @param d value to round
+     * @return rounded value
+     */
+    public static double round4(double d) {
+<span class="fc" id="L180">        final double factor = 1e4;</span>
+<span class="pc bpc" id="L181" title="1 of 4 branches missed.">        return Math.abs(d) &lt; WHOLE_NUMBER / factor</span>
+                ? (long) (d &lt; 0 ? d * factor - 0.5 : d * factor + 0.5) / factor : d;
+    }
+
+    /**
+     * Performs a round which is accurate to within 1 ulp. i.e. for values very close to 0.5 it
+     * might be rounded up or down. This is a pragmatic choice for performance reasons as it is
+     * assumed you are not working on the edge of the precision of double.
+     *
+     * @param d value to round
+     * @return rounded value
+     */
+    public static double round5(double d) {
+<span class="fc" id="L194">        final double factor = 1e5;</span>
+<span class="pc bpc" id="L195" title="2 of 4 branches missed.">        return Math.abs(d) &lt; WHOLE_NUMBER / factor</span>
+                ? (long) (d &lt; 0 ? d * factor - 0.5 : d * factor + 0.5) / factor : d;
+    }
+
+    /**
+     * Performs a round which is accurate to within 1 ulp. i.e. for values very close to 0.5 it
+     * might be rounded up or down. This is a pragmatic choice for performance reasons as it is
+     * assumed you are not working on the edge of the precision of double.
+     *
+     * @param d value to round
+     * @return rounded value
+     */
+    public static double round6(double d) {
+<span class="fc" id="L208">        final double factor = 1e6;</span>
+<span class="pc bpc" id="L209" title="1 of 4 branches missed.">        return Math.abs(d) &lt; WHOLE_NUMBER / factor</span>
+                ? (long) (d &lt; 0 ? d * factor - 0.5 : d * factor + 0.5) / factor : d;
+    }
+
+    /**
+     * Performs a round which is accurate to within 1 ulp. i.e. for values very close to 0.5 it
+     * might be rounded up or down. This is a pragmatic choice for performance reasons as it is
+     * assumed you are not working on the edge of the precision of double.
+     *
+     * @param d value to round
+     * @return rounded value
+     */
+    public static double round7(double d) {
+<span class="fc" id="L222">        final double factor = 1e7;</span>
+<span class="pc bpc" id="L223" title="2 of 4 branches missed.">        return Math.abs(d) &lt; WHOLE_NUMBER / factor</span>
+                ? (long) (d &lt; 0 ? d * factor - 0.5 : d * factor + 0.5) / factor : d;
+    }
+
+    /**
+     * Performs a round which is accurate to within 1 ulp. i.e. for values very close to 0.5 it
+     * might be rounded up or down. This is a pragmatic choice for performance reasons as it is
+     * assumed you are not working on the edge of the precision of double.
+     *
+     * @param d value to round
+     * @return rounded value
+     */
+    public static double round8(double d) {
+<span class="fc" id="L236">        final double factor = 1e8;</span>
+<span class="pc bpc" id="L237" title="1 of 4 branches missed.">        return Math.abs(d) &lt; WHOLE_NUMBER / factor</span>
+                ? (long) (d &lt; 0 ? d * factor - 0.5 : d * factor + 0.5) / factor : d;
+    }
+
+    public static int nextPower2(int n, int min) throws IllegalArgumentException {
+<span class="fc" id="L242">        return (int) Math.min(1 &lt;&lt; 30, nextPower2(n, (long) min));</span>
+    }
+
+    public static long nextPower2(long n, long min) throws IllegalArgumentException {
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">        if (!isPowerOf2(min))</span>
+<span class="nc" id="L247">            throw new IllegalArgumentException(min + &quot; must be a power of 2&quot;);</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (n &lt; min) return min;</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        if (isPowerOf2(n))</span>
+<span class="fc" id="L250">            return n;</span>
+<span class="fc" id="L251">        long i = min;</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        while (i &lt; n) {</span>
+<span class="fc" id="L253">            i *= 2;</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">            if (i &lt;= 0) return 1L &lt;&lt; 62;</span>
+        }
+<span class="fc" id="L256">        return i;</span>
+    }
+
+    public static boolean isPowerOf2(long n) {
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        return Long.bitCount(n) == 1;</span>
+    }
+
+    public static int hash32(@NotNull CharSequence cs) {
+<span class="fc" id="L264">        long h = hash64(cs);</span>
+<span class="fc" id="L265">        h ^= h &gt;&gt; 32;</span>
+<span class="fc" id="L266">        return (int) h;</span>
+    }
+
+    public static int hash32(@NotNull String s) {
+<span class="nc" id="L270">        long h = hash64(s);</span>
+<span class="nc" id="L271">        h ^= h &gt;&gt; 32;</span>
+<span class="nc" id="L272">        return (int) h;</span>
+    }
+
+    public static int hash32(@NotNull StringBuilder s) {
+<span class="nc" id="L276">        long h = hash64(s);</span>
+<span class="nc" id="L277">        h ^= h &gt;&gt; 32;</span>
+<span class="nc" id="L278">        return (int) h;</span>
+    }
+
+    public static int hash32(long l0) {
+<span class="nc" id="L282">        long h = hash64(l0);</span>
+<span class="nc" id="L283">        h ^= h &gt;&gt; 32;</span>
+<span class="nc" id="L284">        return (int) h;</span>
+    }
+
+    public static long hash64(@NotNull CharSequence cs) {
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">        if (cs instanceof String)</span>
+<span class="fc" id="L289">            return hash64((String) cs);</span>
+<span class="nc" id="L290">        long hash = 0;</span>
+<span class="nc bnc" id="L291" title="All 2 branches missed.">        for (int i = 0, len = cs.length(); i &lt; len; i++)</span>
+<span class="nc" id="L292">            hash = hash * 0x32246e3d + cs.charAt(i);</span>
+<span class="nc" id="L293">        return agitate(hash);</span>
+    }
+
+    public static long hash64(@NotNull String s) {
+<span class="fc" id="L297">        long hash = 0;</span>
+
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">        if (Jvm.isJava9Plus()) {</span>
+<span class="nc" id="L300">            final byte[] bytes = StringUtils.extractBytes(s);</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">            for (int i = 0, len = s.length(); i &lt; len; i++)</span>
+<span class="nc" id="L302">                hash = hash * 0x32246e3d + bytes[i];</span>
+<span class="nc" id="L303">        } else {</span>
+<span class="fc" id="L304">            final char[] chars = StringUtils.extractChars(s);</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">            for (int i = 0, len = s.length(); i &lt; len; i++)</span>
+<span class="fc" id="L306">                hash = hash * 0x32246e3d + chars[i];</span>
+        }
+<span class="fc" id="L308">        return agitate(hash);</span>
+    }
+
+    public static long hash64(@NotNull StringBuilder s) {
+<span class="fc" id="L312">        long hash = 0;</span>
+
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">        if (Jvm.isJava9Plus()) {</span>
+<span class="nc" id="L315">            final byte[] bytes = StringUtils.extractBytes(s);</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">            for (int i = 0, len = s.length(); i &lt; len; i++)</span>
+<span class="nc" id="L317">                hash = hash * 0x32246e3d + bytes[i];</span>
+<span class="nc" id="L318">        } else {</span>
+<span class="fc" id="L319">            final char[] chars = StringUtils.extractChars(s);</span>
+<span class="fc bfc" id="L320" title="All 2 branches covered.">            for (int i = 0, len = s.length(); i &lt; len; i++)</span>
+<span class="fc" id="L321">                hash = hash * 0x32246e3d + chars[i];</span>
+        }
+<span class="fc" id="L323">        return agitate(hash);</span>
+    }
+
+    /**
+     * Returns rounded down log&lt;sub&gt;2&lt;/sub&gt;{@code num}, e. g.: {@code intLog2(1) == 0},
+     * {@code intLog2(2) == 1}, {@code intLog2(7) == 2}, {@code intLog2(8) == 3}, etc.
+     *
+     * @throws IllegalArgumentException if the given number &amp;lt;= 0
+     */
+    public static int intLog2(long num) {
+<span class="fc bfc" id="L333" title="All 2 branches covered.">        if (num &lt;= 0)</span>
+<span class="fc" id="L334">            throw new IllegalArgumentException(&quot;positive argument expected, &quot; + num + &quot; given&quot;);</span>
+<span class="fc" id="L335">        return 63 - Long.numberOfLeadingZeros(num);</span>
+    }
+
+    public static byte toInt8(long x) throws IllegalArgumentException {
+<span class="nc bnc" id="L339" title="All 2 branches missed.">        if ((byte) x == x)</span>
+<span class="nc" id="L340">            return (byte) x;</span>
+<span class="nc" id="L341">        throw new IllegalArgumentException(&quot;Byte &quot; + x + &quot; out of range&quot;);</span>
+    }
+
+    public static short toInt16(long x) throws IllegalArgumentException {
+<span class="nc bnc" id="L345" title="All 2 branches missed.">        if ((short) x == x)</span>
+<span class="nc" id="L346">            return (short) x;</span>
+<span class="nc" id="L347">        throw new IllegalArgumentException(&quot;Short &quot; + x + &quot; out of range&quot;);</span>
+    }
+
+    public static int toInt32(long x, @NotNull String msg) throws IllegalArgumentException {
+<span class="nc bnc" id="L351" title="All 2 branches missed.">        if ((int) x == x)</span>
+<span class="nc" id="L352">            return (int) x;</span>
+<span class="nc" id="L353">        throw new IllegalArgumentException(String.format(msg, x));</span>
+    }
+
+    public static int toInt32(long x) throws IllegalArgumentException {
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        if ((int) x == x)</span>
+<span class="nc" id="L358">            return (int) x;</span>
+<span class="nc" id="L359">        throw new IllegalArgumentException(&quot;Int &quot; + x + &quot; out of range&quot;);</span>
+    }
+
+    public static short toUInt8(long x) throws IllegalArgumentException {
+<span class="nc bnc" id="L363" title="All 2 branches missed.">        if ((x &amp; 0xFF) == x)</span>
+<span class="nc" id="L364">            return (short) x;</span>
+<span class="nc" id="L365">        throw new IllegalArgumentException(&quot;Unsigned Byte &quot; + x + &quot; out of range&quot;);</span>
+    }
+
+    public static int toUInt16(long x) throws IllegalArgumentException {
+<span class="nc bnc" id="L369" title="All 2 branches missed.">        if ((x &amp; 0xFFFF) == x)</span>
+<span class="nc" id="L370">            return (int) x;</span>
+<span class="nc" id="L371">        throw new IllegalArgumentException(&quot;Unsigned Short &quot; + x + &quot; out of range&quot;);</span>
+    }
+
+    public static int toUInt31(long x) throws IllegalArgumentException {
+<span class="nc bnc" id="L375" title="All 2 branches missed.">        if ((x &amp; 0x7FFFFFFFL) == x)</span>
+<span class="nc" id="L376">            return (int) x;</span>
+<span class="nc" id="L377">        throw new IllegalArgumentException(&quot;Unsigned Int 31-bit &quot; + x + &quot; out of range&quot;);</span>
+    }
+
+    public static long toUInt32(long x) throws IllegalArgumentException {
+<span class="nc bnc" id="L381" title="All 2 branches missed.">        if ((x &amp; 0xFFFFFFFFL) == x)</span>
+<span class="nc" id="L382">            return x;</span>
+<span class="nc" id="L383">        throw new IllegalArgumentException(&quot;Unsigned Int &quot; + x + &quot; out of range&quot;);</span>
+    }
+
+    public static long agitate(long l) {
+<span class="fc" id="L387">        l += l &gt;&gt;&gt; 22;</span>
+<span class="fc" id="L388">        l ^= Long.rotateRight(l, 17);</span>
+<span class="fc" id="L389">        return l;</span>
+    }
+
+    /**
+     * A simple hashing algorithm for a 64-bit value
+     *
+     * @param l0 to hash
+     * @return hash value.
+     */
+    public static long hash64(long l0) {
+<span class="nc" id="L399">        int l0a = (int) (l0 &gt;&gt; 32);</span>
+
+<span class="nc" id="L401">        long h0 = l0 * M0 + l0a * M1;</span>
+
+<span class="nc" id="L403">        return agitate(h0);</span>
+    }
+
+    /**
+     * A simple hashing algorithm for a 128-bit value
+     *
+     * @param l0 to hash
+     * @param l1 to hash
+     * @return hash value.
+     */
+    public static long hash64(long l0, long l1) {
+<span class="nc" id="L414">        int l0a = (int) (l0 &gt;&gt; 32);</span>
+<span class="nc" id="L415">        int l1a = (int) (l1 &gt;&gt; 32);</span>
+
+<span class="nc" id="L417">        long h0 = (l0 + l1a) * M0;</span>
+<span class="nc" id="L418">        long h1 = (l1 + l0a) * M1;</span>
+
+<span class="nc" id="L420">        return agitate(h0) ^ agitate(h1);</span>
+    }
+
+    /**
+     * Divide {@code dividend} by divisor, if division is not integral the result is rounded up.
+     * Examples: {@code divideRoundUp(10, 5) == 2}, {@code divideRoundUp(11, 5) == 3},
+     * {@code divideRoundUp(-10, 5) == -2}, {@code divideRoundUp(-11, 5) == -3}.
+     *
+     * @return the rounded up quotient
+     */
+    public static long divideRoundUp(long dividend, long divisor) {
+<span class="fc bfc" id="L431" title="All 4 branches covered.">        int sign = (dividend &gt; 0 ? 1 : -1) * (divisor &gt; 0 ? 1 : -1);</span>
+<span class="fc" id="L432">        return sign * (Math.abs(dividend) + Math.abs(divisor) - 1) / Math.abs(divisor);</span>
+    }
+
+    public static long tens(int decimalPlaces) {
+<span class="nc" id="L436">        return TENS[decimalPlaces];</span>
+    }
+
+    public static int digits(long num) {
+<span class="fc" id="L440">        int index = Arrays.binarySearch(TENS, num);</span>
+<span class="fc bfc" id="L441" title="All 4 branches covered.">        return index &lt; -1 ? -1 - index : index &gt;= 0 ? index + 1 : 1;</span>
+    }
+
+    public static long fives(int decimalPlaces) {
+<span class="nc" id="L445">        return FIVES[decimalPlaces];</span>
+    }
+
+    public static boolean same(double a, double b) {
+<span class="fc bfc" id="L449" title="All 4 branches covered.">        return Double.isNaN(a) ? Double.isNaN(b) : a == b;</span>
+    }
+
+    public static boolean same(float a, float b) {
+<span class="fc bfc" id="L453" title="All 4 branches covered.">        return Float.isNaN(a) ? Float.isNaN(b) : a == b;</span>
+    }
+
+    public static int hash(Object o) {
+<span class="nc bnc" id="L457" title="All 2 branches missed.">        return o == null ? 0 : o.hashCode();</span>
+    }
+
+    public static int hash(Object o1, Object o2) {
+<span class="nc" id="L461">        return hash(o1) * M0 + hash(o2);</span>
+    }
+
+    public static int hash(Object o1, Object o2, Object o3) {
+<span class="nc" id="L465">        return hash(o1, o2) * M0 + hash(o3);</span>
+    }
+
+    public static int hash(Object o1, Object o2, Object o3, Object o4) {
+<span class="nc" id="L469">        return hash(o1, o2, o3) * M0 + hash(o4);</span>
+    }
+
+    public static int hash(Object o1, Object o2, Object o3, Object o4, Object o5) {
+<span class="nc" id="L473">        return hash(o1, o2, o3, o4) * M0 + hash(o5);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

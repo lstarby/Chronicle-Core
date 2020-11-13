@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GoogleAnalytics.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.internal.analytics.google</a> &gt; <span class="el_source">GoogleAnalytics.java</span></div><h1>GoogleAnalytics.java</h1><pre class="source lang-java linenums">package net.openhft.chronicle.core.internal.analytics.google;
+
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.analytics.Analytics;
+import net.openhft.chronicle.core.internal.analytics.http.HttpUtil;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static java.util.stream.Collectors.toMap;
+import static net.openhft.chronicle.core.internal.analytics.google.GoogleAnalytics.Account.create;
+
+public final class GoogleAnalytics implements Analytics {
+
+<span class="nc" id="L26">    private final long GIB = 1024 * 1024;</span>
+<span class="nc" id="L27">    private final String COOKIE_FILE_NAME = &quot;software.chronicle.client.id&quot;;</span>
+    private static final String ENDPOINT_URL = &quot;https://www.google-analytics.com/mp/collect&quot;;
+    private static final String START_EVENT_NAME = &quot;started&quot;;
+
+    private final String libraryName;
+    private final String version;
+    private final String clientId;
+    //private final String measurementId;
+    private final Account account;
+
+<span class="nc" id="L37">    public GoogleAnalytics(@NotNull final String libraryName, @NotNull final String version) {</span>
+<span class="nc" id="L38">        this.libraryName = libraryName;</span>
+<span class="nc" id="L39">        this.version = version;</span>
+<span class="nc" id="L40">        this.clientId = acquireClientId();</span>
+        //this.measurementId = measurementId(libraryName);
+<span class="nc" id="L42">        this.account = account(libraryName);</span>
+<span class="nc" id="L43">    }</span>
+
+    @Override
+    public void onStart(@NotNull final Map&lt;String, String&gt; eventParameters) {
+<span class="nc" id="L47">        httpSend(START_EVENT_NAME, eventParameters);</span>
+<span class="nc" id="L48">    }</span>
+
+    @Override
+    public void onFeature(@NotNull final String id, @NotNull final Map&lt;String, String&gt; eventParameters) {
+<span class="nc" id="L52">        httpSend(id, eventParameters);</span>
+<span class="nc" id="L53">    }</span>
+
+    private void httpSend(@NotNull String eventName, @NotNull final Map&lt;String, String&gt; eventParameters) {
+<span class="nc bnc" id="L56" title="All 2 branches missed.">        if (account != null) {</span>
+<span class="nc" id="L57">            final String url = ENDPOINT_URL + &quot;?measurement_id=&quot; + urlEncode(account.measurmentId()) + &quot;&amp;api_secret=&quot; + urlEncode(account.apiSectret());</span>
+<span class="nc" id="L58">            final String json = jsonFor(eventName, eventParameters, userProperties());</span>
+<span class="nc" id="L59">            HttpUtil.send(url, json);</span>
+        }
+<span class="nc" id="L61">    }</span>
+
+    private String jsonFor(@NotNull final String eventName,
+                           @NotNull final Map&lt;String, String&gt; eventParameters,
+                           @NotNull final Map&lt;String, Object&gt; userProperties) {
+<span class="nc" id="L66">        return Stream.of(</span>
+                &quot;{&quot;,
+<span class="nc" id="L68">                jsonElement(&quot; &quot;, &quot;clientId&quot;, clientId) + &quot;,&quot;,</span>
+<span class="nc" id="L69">                jsonElement(&quot; &quot;, &quot;userId&quot;, clientId) + &quot;,&quot;,</span>
+<span class="nc" id="L70">                jsonElement(&quot; &quot;, &quot;nonPersonalizedAds&quot;, true) + &quot;,&quot;,</span>
+<span class="nc" id="L71">                &quot; &quot; + asElement(&quot;events&quot;) + &quot;: [{&quot;,</span>
+<span class="nc" id="L72">                jsonElement(&quot;  &quot;, &quot;name&quot;, eventName) + &quot;,&quot;,</span>
+<span class="nc" id="L73">                &quot;  &quot; + asElement(&quot;params&quot;) + &quot;: {&quot;,</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">                jsonElement(&quot;   &quot;, &quot;app_version&quot;, version) + (eventParameters.isEmpty() ? &quot;&quot; : &quot;,&quot;),</span>
+<span class="nc" id="L75">                eventParameters.entrySet().stream().map(e -&gt; jsonElement(&quot;   &quot;, e.getKey(), e.getValue())).collect(Collectors.joining(String.format(&quot;,%n&quot;))),</span>
+                &quot;  }&quot;,
+                &quot; }],&quot;,
+<span class="nc" id="L78">                &quot; &quot; + asElement(&quot;userProperties&quot;) + &quot;: {&quot;,</span>
+<span class="nc" id="L79">                userProperties.entrySet().stream().map(this::userProperty).collect(Collectors.joining(String.format(&quot;,%n&quot;))),</span>
+                &quot; }&quot;,
+                &quot;}&quot;
+<span class="nc" id="L82">        ).collect(Collectors.joining(nl()));</span>
+    }
+
+    private String jsonElement(final String indent,
+                               final String key,
+                               final Object value) {
+<span class="nc" id="L88">        return indent + asElement(key) + &quot;: &quot; + asElement(value);</span>
+    }
+
+    private String asElement(final Object value) {
+<span class="nc bnc" id="L92" title="All 2 branches missed.">        return</span>
+                value instanceof CharSequence
+                        ? &quot;\&quot;&quot; + value + &quot;\&quot;&quot;
+<span class="nc" id="L95">                        : value.toString();</span>
+
+    }
+
+    private String userProperty(final Map.Entry&lt;String, Object&gt; userProperty) {
+<span class="nc" id="L100">        return String.format(&quot;  %s: {%n %s%n  }&quot;, asElement(userProperty.getKey()), jsonElement(&quot;   &quot;, &quot;value&quot;, userProperty.getValue()));</span>
+    }
+
+    private String urlEncode(final String s) {
+        try {
+<span class="nc" id="L105">            return URLEncoder.encode(s, StandardCharsets.UTF_8.toString());</span>
+<span class="nc" id="L106">        } catch (UnsupportedEncodingException e) {</span>
+<span class="nc" id="L107">            Jvm.rethrow(e);</span>
+<span class="nc" id="L108">            throw new RuntimeException();</span>
+        }
+    }
+
+    private Map&lt;String, Object&gt; userProperties() {
+<span class="nc" id="L113">        return Stream.of(</span>
+<span class="nc" id="L114">                entryFor(&quot;java.runtime.name&quot;),</span>
+<span class="nc" id="L115">                entryFor(&quot;java.runtime.version&quot;),</span>
+<span class="nc" id="L116">                entryFor(&quot;os.name&quot;),</span>
+<span class="nc" id="L117">                entryFor(&quot;os.arch&quot;),</span>
+<span class="nc" id="L118">                entryFor(&quot;os.version&quot;),</span>
+<span class="nc" id="L119">                entry(replaceDotsWithUnderscore(&quot;timezone.default&quot;), TimeZone.getDefault().getID()),</span>
+<span class="nc" id="L120">                entry(replaceDotsWithUnderscore(&quot;available.processors&quot;), Integer.toString(Runtime.getRuntime().availableProcessors())), // Must be strings...</span>
+<span class="nc" id="L121">                entry(replaceDotsWithUnderscore(&quot;max.memory.gib&quot;), Long.toString(Runtime.getRuntime().maxMemory() / GIB)),</span>
+<span class="nc" id="L122">                entry(replaceDotsWithUnderscore(&quot;java.major.version&quot;), Long.toString(Jvm.majorVersion())),</span>
+<span class="nc" id="L123">                entry(replaceDotsWithUnderscore(&quot;max.direct.memory.gib&quot;), Long.toString(Jvm.maxDirectMemory() / GIB))</span>
+        )
+<span class="nc bnc" id="L125" title="All 2 branches missed.">                .filter(e -&gt; e.getValue() != null)</span>
+<span class="nc" id="L126">                .collect(toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -&gt; b, LinkedHashMap::new));</span>
+    }
+
+    private static Map.Entry&lt;String, String&gt; entryFor(@NotNull final String systemProperty) {
+<span class="nc" id="L130">        return new AbstractMap.SimpleImmutableEntry&lt;&gt;(replaceDotsWithUnderscore(systemProperty), System.getProperty(systemProperty));</span>
+    }
+
+    private static Map.Entry&lt;String, Object&gt; entry(@NotNull final String key, @Nullable final Object value) {
+<span class="nc" id="L134">        return new AbstractMap.SimpleImmutableEntry&lt;&gt;(key, value);</span>
+    }
+
+    // This tries to read a client id from a &quot;cookie&quot; file in the
+    // user's home directory. If that fails, a new random clientId
+    // is generated and an attempt is made to save it in said file.
+    private String acquireClientId() {
+<span class="nc" id="L141">        final String userHome = System.getProperty(&quot;user.home&quot;);</span>
+        try {
+<span class="nc" id="L143">            final Path path = Paths.get(userHome, COOKIE_FILE_NAME);</span>
+<span class="nc" id="L144">            return Files.lines(path, StandardCharsets.UTF_8)</span>
+<span class="nc" id="L145">                    .findFirst()</span>
+<span class="nc" id="L146">                    .map(UUID::fromString)</span>
+<span class="nc" id="L147">                    .orElseThrow(NoSuchElementException::new)</span>
+<span class="nc" id="L148">                    .toString();</span>
+<span class="nc" id="L149">        } catch (Exception ignore) {</span>
+        }
+<span class="nc" id="L151">        final String clientId = UUID.randomUUID().toString();</span>
+        try {
+<span class="nc" id="L153">            final Path path = Paths.get(userHome, COOKIE_FILE_NAME);</span>
+<span class="nc" id="L154">            Files.write(path, clientId.getBytes(StandardCharsets.UTF_8));</span>
+<span class="nc" id="L155">        } catch (IOException ignore) {</span>
+<span class="nc" id="L156">        }</span>
+<span class="nc" id="L157">        return clientId;</span>
+    }
+
+    private Account account(final String libraryName) {
+<span class="nc bnc" id="L161" title="All 22 branches missed.">        switch (libraryName) {</span>
+            // OSS
+            case &quot;chronicle-map&quot;:
+<span class="nc" id="L164">                return create(&quot;G-TDTJG5CT6G&quot;, &quot;J8qsWGHgQP6CLs43mQ10KQ&quot;);</span>
+            case &quot;chronicle-queue&quot;:
+<span class="nc" id="L166">                return create(&quot;G-4K5MBLGPLE&quot;, &quot;k1hK3x2qQaKk4F5gL-PBhQ&quot;);</span>
+            case &quot;chronicle-queue-demo&quot;:
+<span class="nc" id="L168">                return create(&quot;G-Q699PK0278&quot;, &quot;YDkgw-3DR6yMIcGsCGxrBg&quot;);</span>
+            case &quot;chronicle-decentred&quot;:
+<span class="nc" id="L170">                return create(&quot;G-MHNQF60609&quot;, &quot;lwahZLwuR62lmlhWQO_XYA&quot;);</span>
+            case &quot;chronicle-websocket-jetty&quot;:
+<span class="nc" id="L172">                return create(&quot;G-664QLSXFND&quot;, &quot;CI402HSGRN-ou20YMSTV9Q&quot;);</span>
+            // Enterprise
+            case &quot;chronicle-wire-enterprise&quot;:
+<span class="nc" id="L175">                return create(&quot;G-FLEY5Z3PTV&quot;, &quot;w4HxPDbzR2We_8XoF79BRA&quot;);</span>
+            case &quot;chronicle-network-enterprise&quot;:
+<span class="nc" id="L177">                return create(&quot;G-TVNVZ37HC0&quot;, &quot;ymz2OTZgQtSUAHEV_fxVjw&quot;);</span>
+            case &quot;chronicle-services&quot;:
+<span class="nc" id="L179">                return create(&quot;G-7QVV85K3RG&quot;, &quot;u-ED1zpYRPqq4WwuuD25RQ&quot;);</span>
+            case &quot;chronicle-services-demo&quot;:
+<span class="nc" id="L181">                return create(&quot;G-4H93Z95F9S&quot;, &quot;VmiM3ElBRbaJXl6fskAOqw&quot;);</span>
+            case &quot;chronicle-fix&quot;:
+<span class="nc" id="L183">                return create(&quot;G-V9N5NL07WJ&quot;, &quot;iCo8d19UQG26zZKHDi5M5A&quot;);</span>
+            case &quot;chronicle-fix-demo&quot;:
+<span class="nc" id="L185">                return create(&quot;G-1QJ7EZKQEZ&quot;, &quot;HxiuHF85QKyZAJ9dWEHJZQ&quot;);</span>
+            case &quot;chronicle-queue-enterprise&quot;:
+<span class="nc" id="L187">                return create(&quot;G-BP94BVC2ZS&quot;, &quot;iPRHY5a2TbeBP8GuWaK0rA&quot;);</span>
+            case &quot;chronicle-queue-enterprise-demo&quot;:
+<span class="nc" id="L189">                return create(&quot;G-XXR6JRVS5V&quot;, &quot;Fz9YiKtmQ1ukSunPIwxfQw&quot;);</span>
+            case &quot;chronicle-queue-zero&quot;:
+<span class="nc" id="L191">                return create(&quot;G-H50N0NLQ7C&quot;, &quot;2NgRCqTtQx-aR6gwZVpshg&quot;);</span>
+            case &quot;chronicle-map-enterprise&quot;:
+<span class="nc" id="L193">                return create(&quot;G-TKNRN0Y813&quot;, &quot;SKYi5vinTDGgLuiMKU2UXA&quot;);</span>
+            case &quot;chronicle-ring&quot;:
+<span class="nc" id="L195">                return create(&quot;G-C1WV1K8P3C&quot;, &quot;MqQm60ViRkO385xUs1zQ9Q&quot;);</span>
+            case &quot;chronicle-datagrid&quot;:
+<span class="nc" id="L197">                return create(&quot;G-H0VN4G0ZYL&quot;, &quot;-hftABXXRB-Z4hL8KrMOPw&quot;);</span>
+            case &quot;chronicle-datagrid-demo&quot;:
+<span class="nc" id="L199">                return create(&quot;G-N8NLPDX36X&quot;, &quot;BdyxSG6iT6Cc8nWz5YxzrA&quot;);</span>
+            case &quot;chronicle-market-data-distributor&quot;:
+<span class="nc" id="L201">                return create(&quot;G-FR9BRC8NSW&quot;, &quot;FC8RHQpLROOGCCRFiXiKjg&quot;);</span>
+            case &quot;chronicle-market-data-distributor-demo&quot;:
+<span class="nc" id="L203">                return create(&quot;G-RPPKNQD1PR&quot;, &quot;4vpBLpK4QuOd6_3lDfL8sw&quot;);</span>
+            case &quot;efx&quot;: //??
+<span class="nc" id="L205">                return create(&quot;G-PK6BJZNRD9&quot;, &quot;c6ujn9xNQQqMfu07p8zPhw&quot;);</span>
+        }
+        // Unknown library
+<span class="nc" id="L208">        return null;</span>
+    }
+
+    private String nl() {
+<span class="nc" id="L212">        return String.format(&quot;%n&quot;);</span>
+    }
+
+    interface Account {
+        String measurmentId();
+
+        String apiSectret();
+
+        static Account create(@NotNull final String measurementId, @NotNull final String apiSecret) {
+<span class="nc" id="L221">            return new Account() {</span>
+                @Override
+                public String measurmentId() {
+<span class="nc" id="L224">                    return measurementId;</span>
+                }
+
+                @Override
+                public String apiSectret() {
+<span class="nc" id="L229">                    return apiSecret;</span>
+                }
+
+                @Override
+                public String toString() {
+<span class="nc" id="L234">                    return &quot;(&quot; + measurementId + &quot;, &quot; + apiSecret + &quot;)&quot;;</span>
+                }
+            };
+        }
+    }
+
+    private static String replaceDotsWithUnderscore(@NotNull final String s) {
+<span class="nc" id="L241">        return s.replace('.', '_');</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

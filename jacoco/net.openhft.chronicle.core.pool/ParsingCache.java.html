@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ParsingCache.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.pool</a> &gt; <span class="el_source">ParsingCache.java</span></div><h1>ParsingCache.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core.pool;
+
+import net.openhft.chronicle.core.Maths;
+import net.openhft.chronicle.core.util.StringUtils;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Stream;
+
+public class ParsingCache&lt;E&gt; {
+    protected final ParsedData&lt;E&gt;[] interner;
+    protected final int mask, shift;
+    private final Function&lt;String, E&gt; eFunction;
+<span class="fc" id="L34">    protected boolean toggle = false;</span>
+
+<span class="fc" id="L36">    public ParsingCache(int capacity, Function&lt;String, E&gt; eFunction) throws IllegalArgumentException {</span>
+<span class="fc" id="L37">        this.eFunction = eFunction;</span>
+<span class="fc" id="L38">        int n = Maths.nextPower2(capacity, 128);</span>
+<span class="fc" id="L39">        shift = Maths.intLog2(n);</span>
+<span class="fc" id="L40">        interner = new ParsedData[n];</span>
+<span class="fc" id="L41">        mask = n - 1;</span>
+<span class="fc" id="L42">    }</span>
+
+    @Nullable
+    public E intern(@Nullable CharSequence cs) {
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">        if (cs == null)</span>
+<span class="nc" id="L47">            return null;</span>
+<span class="fc" id="L48">        int hash = Maths.hash32(cs);</span>
+<span class="fc" id="L49">        int h = hash &amp; mask;</span>
+<span class="fc" id="L50">        ParsedData&lt;E&gt; s = interner[h];</span>
+<span class="pc bpc" id="L51" title="1 of 4 branches missed.">        if (s != null &amp;&amp; StringUtils.isEqual(s.string, cs))</span>
+<span class="fc" id="L52">            return s.e;</span>
+<span class="fc" id="L53">        int h2 = (hash &gt;&gt; shift) &amp; mask;</span>
+<span class="fc" id="L54">        ParsedData&lt;E&gt; s2 = interner[h2];</span>
+<span class="pc bpc" id="L55" title="3 of 4 branches missed.">        if (s2 != null &amp;&amp; StringUtils.isEqual(s2.string, cs))</span>
+<span class="nc" id="L56">            return s2.e;</span>
+<span class="fc" id="L57">        @NotNull String string = cs.toString();</span>
+<span class="fc" id="L58">        @NotNull ParsedData&lt;E&gt; s3 = new ParsedData&lt;&gt;(string, eFunction.apply(string));</span>
+<span class="pc bpc" id="L59" title="5 of 6 branches missed.">        interner[s == null || (s2 != null &amp;&amp; toggle()) ? h : h2] = s3;</span>
+
+<span class="fc" id="L61">        return s3.e;</span>
+    }
+
+    protected boolean toggle() {
+<span class="nc bnc" id="L65" title="All 2 branches missed.">        return toggle = !toggle;</span>
+    }
+
+    public int valueCount() {
+<span class="fc" id="L69">        return (int) Stream.of(interner).filter(Objects::nonNull).count();</span>
+    }
+
+    static class ParsedData&lt;E&gt; {
+        final String string;
+        final E e;
+
+<span class="fc" id="L76">        ParsedData(String string, E e) {</span>
+<span class="fc" id="L77">            this.string = string;</span>
+<span class="fc" id="L78">            this.e = e;</span>
+<span class="fc" id="L79">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

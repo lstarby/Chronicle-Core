@@ -1,0 +1,566 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StringUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.util</a> &gt; <span class="el_source">StringUtils.java</span></div><h1>StringUtils.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core.util;
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.OS;
+import net.openhft.chronicle.core.annotation.ForceInline;
+import net.openhft.chronicle.core.annotation.Java9;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.lang.reflect.Field;
+
+import static java.lang.Character.toLowerCase;
+
+<span class="fc" id="L32">public enum StringUtils {</span>
+    ;
+
+    private static final Field S_VALUE, SB_COUNT, S_CODER, SB_CODER;
+    private static final long S_VALUE_OFFSET, SB_VALUE_OFFSET, SB_COUNT_OFFSET, S_COUNT_OFFSET;
+    private static final long MAX_VALUE_DIVIDE_10 = Long.MAX_VALUE / 10;
+
+    static {
+        try {
+<span class="fc" id="L41">            S_VALUE = String.class.getDeclaredField(&quot;value&quot;);</span>
+<span class="fc" id="L42">            Jvm.setAccessible(S_VALUE);</span>
+<span class="fc" id="L43">            S_VALUE_OFFSET = OS.memory().getFieldOffset(S_VALUE);</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            if (Jvm.isJava9Plus()) {</span>
+<span class="nc" id="L45">                SB_CODER = Jvm.getField(StringBuilder.class.getSuperclass(), &quot;coder&quot;);</span>
+<span class="nc" id="L46">                S_CODER = Jvm.getField(String.class, &quot;coder&quot;);</span>
+            } else {
+<span class="fc" id="L48">                S_CODER = null;</span>
+<span class="fc" id="L49">                SB_CODER = null;</span>
+            }
+<span class="nc" id="L51">        } catch (Exception e) {</span>
+<span class="nc" id="L52">            throw new AssertionError(e);</span>
+<span class="fc" id="L53">        }</span>
+
+<span class="fc" id="L55">        long sCountOffset = -1;</span>
+        try {
+<span class="nc" id="L57">            Field sCount = String.class.getDeclaredField(&quot;count&quot;);</span>
+<span class="nc" id="L58">            Jvm.setAccessible(sCount);</span>
+<span class="nc" id="L59">            sCountOffset = OS.memory().getFieldOffset(sCount);</span>
+<span class="fc" id="L60">        } catch (Exception ignored) {</span>
+<span class="nc" id="L61">        }</span>
+<span class="fc" id="L62">        S_COUNT_OFFSET = sCountOffset;</span>
+
+        try {
+            Field sbValue;
+            long sbValOffset;
+            Field sbCount;
+            long sbCountOffset;
+            try {
+<span class="fc" id="L70">                sbValue = Class.forName(&quot;java.lang.AbstractStringBuilder&quot;).getDeclaredField(&quot;value&quot;);</span>
+<span class="fc" id="L71">                Jvm.setAccessible(sbValue);</span>
+<span class="fc" id="L72">                sbValOffset = OS.memory().getFieldOffset(sbValue);</span>
+<span class="fc" id="L73">                sbCount = Class.forName(&quot;java.lang.AbstractStringBuilder&quot;).getDeclaredField(&quot;count&quot;);</span>
+<span class="fc" id="L74">                Jvm.setAccessible(sbCount);</span>
+<span class="fc" id="L75">                sbCountOffset = OS.memory().getFieldOffset(sbCount);</span>
+<span class="nc" id="L76">            } catch (NoSuchFieldException e) {</span>
+<span class="nc" id="L77">                sbValue = Class.forName(&quot;java.lang.StringBuilder&quot;).getDeclaredField(&quot;value&quot;);</span>
+<span class="nc" id="L78">                Jvm.setAccessible(sbValue);</span>
+<span class="nc" id="L79">                sbValOffset = OS.memory().getFieldOffset(sbValue);</span>
+<span class="nc" id="L80">                sbCount = Class.forName(&quot;java.lang.StringBuilder&quot;).getDeclaredField(&quot;count&quot;);</span>
+<span class="nc" id="L81">                Jvm.setAccessible(sbCount);</span>
+<span class="nc" id="L82">                sbCountOffset = OS.memory().getFieldOffset(sbCount);</span>
+<span class="fc" id="L83">            }</span>
+
+<span class="fc" id="L85">            SB_COUNT = sbCount;</span>
+<span class="fc" id="L86">            SB_VALUE_OFFSET = sbValOffset;</span>
+<span class="fc" id="L87">            SB_COUNT_OFFSET = sbCountOffset;</span>
+<span class="nc" id="L88">        } catch (Exception e) {</span>
+<span class="nc" id="L89">            throw new AssertionError(e);</span>
+<span class="fc" id="L90">        }</span>
+<span class="fc" id="L91">    }</span>
+
+    public static void setLength(@NotNull StringBuilder sb, int length) {
+        try {
+<span class="nc" id="L95">            SB_COUNT.set(sb, length);</span>
+<span class="nc" id="L96">        } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L97">            throw new AssertionError(e);</span>
+<span class="nc" id="L98">        }</span>
+<span class="nc" id="L99">    }</span>
+
+    public static void set(@NotNull StringBuilder sb, CharSequence cs) {
+<span class="fc" id="L102">        sb.setLength(0);</span>
+<span class="fc" id="L103">        sb.append(cs);</span>
+<span class="fc" id="L104">    }</span>
+
+    public static boolean endsWith(@NotNull final CharSequence source,
+                                   @NotNull final String endsWith) {
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        for (int i = 1; i &lt;= endsWith.length(); i++) {</span>
+<span class="nc" id="L109">            if (toLowerCase(source.charAt(source.length() - i)) !=</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">                    toLowerCase(endsWith.charAt(endsWith.length() - i))) {</span>
+<span class="nc" id="L111">                return false;</span>
+            }
+        }
+
+<span class="nc" id="L115">        return true;</span>
+    }
+
+    @ForceInline
+    public static boolean isEqual(@Nullable CharSequence s, @Nullable CharSequence cs) {
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        if (s instanceof StringBuilder) {</span>
+<span class="nc" id="L121">            return isEqual((StringBuilder) s, cs);</span>
+        }
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (s == cs)</span>
+<span class="fc" id="L124">            return true;</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if (s == null) return false;</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (cs == null) return false;</span>
+<span class="fc" id="L127">        int sLength = s.length();</span>
+<span class="fc" id="L128">        int csLength = cs.length();</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (sLength != csLength) return false;</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        for (int i = 0; i &lt; csLength; i++)</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">            if (s.charAt(i) != cs.charAt(i))</span>
+<span class="fc" id="L132">                return false;</span>
+<span class="nc" id="L133">        return true;</span>
+    }
+
+    @ForceInline
+    public static boolean isEqual(@Nullable StringBuilder s, @Nullable CharSequence cs) {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (s == cs)</span>
+<span class="fc" id="L139">            return true;</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (s == null) return false;</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (cs == null) return false;</span>
+<span class="fc" id="L142">        int length = cs.length();</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (s.length() != length) return false;</span>
+
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        if (Jvm.isJava9Plus()) {</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">            for (int i = 0; i &lt; length; i++)</span>
+                // This is not as fast as it could be.
+<span class="nc bnc" id="L148" title="All 2 branches missed.">                if (s.charAt(i) != cs.charAt(i))</span>
+<span class="nc" id="L149">                    return false;</span>
+<span class="nc" id="L150">            return true;</span>
+        } else {
+<span class="fc" id="L152">            char[] chars = StringUtils.extractChars(s);</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">            for (int i = 0; i &lt; length; i++)</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                if (chars[i] != cs.charAt(i))</span>
+<span class="fc" id="L155">                    return false;</span>
+<span class="fc" id="L156">            return true;</span>
+        }
+    }
+
+    @ForceInline
+    public static boolean equalsCaseIgnore(@Nullable CharSequence s, @NotNull CharSequence cs) {
+<span class="nc bnc" id="L162" title="All 2 branches missed.">        if (s == null) return false;</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        if (s.length() != cs.length()) return false;</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        for (int i = 0; i &lt; cs.length(); i++)</span>
+<span class="nc" id="L165">            if (Character.toLowerCase(s.charAt(i)) !=</span>
+<span class="nc bnc" id="L166" title="All 2 branches missed.">                    Character.toLowerCase(cs.charAt(i)))</span>
+<span class="nc" id="L167">                return false;</span>
+<span class="nc" id="L168">        return true;</span>
+    }
+
+    @Nullable
+    @ForceInline
+    public static String toString(@Nullable Object o) {
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        return o == null ? null : o.toString();</span>
+    }
+
+    public static char[] extractChars(StringBuilder sb) {
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (Jvm.isJava9Plus()) {</span>
+<span class="nc" id="L179">            final char[] data = new char[sb.length()];</span>
+<span class="nc" id="L180">            sb.getChars(0, sb.length(), data, 0);</span>
+<span class="nc" id="L181">            return data;</span>
+        }
+
+<span class="fc" id="L184">        return OS.memory().getObject(sb, SB_VALUE_OFFSET);</span>
+    }
+
+    @Java9
+    public static byte getStringCoder(@NotNull String str) {
+<span class="nc" id="L189">        return getStringCoderForStringOrStringBuilder(str);</span>
+    }
+
+    @Java9
+    public static byte getStringCoder(@NotNull StringBuilder str) {
+<span class="nc" id="L194">        return getStringCoderForStringOrStringBuilder(str);</span>
+    }
+
+    @Java9
+    private static byte getStringCoderForStringOrStringBuilder(@NotNull CharSequence charSequence) {
+        try {
+<span class="nc bnc" id="L200" title="All 2 branches missed.">            if (charSequence instanceof String) return S_CODER.getByte(charSequence);</span>
+<span class="nc bnc" id="L201" title="All 2 branches missed.">            else if (charSequence instanceof StringBuilder) return SB_CODER.getByte(charSequence);</span>
+<span class="nc" id="L202">            else return Jvm.getField(charSequence.getClass(), &quot;coder&quot;).getByte(charSequence);</span>
+<span class="nc" id="L203">        } catch (IllegalArgumentException | IllegalAccessException e) {</span>
+<span class="nc" id="L204">            throw new AssertionError(e);</span>
+        }
+    }
+
+    @Java9
+    public static byte[] extractBytes(@NotNull StringBuilder sb) {
+<span class="nc" id="L210">        ensureJava9Plus();</span>
+
+<span class="nc" id="L212">        return OS.memory().getObject(sb, SB_VALUE_OFFSET);</span>
+    }
+
+    public static char[] extractChars(@NotNull String s) {
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">        if (Jvm.isJava9Plus()) {</span>
+<span class="nc" id="L217">            return s.toCharArray();</span>
+        }
+<span class="fc" id="L219">        return OS.memory().getObject(s, S_VALUE_OFFSET);</span>
+    }
+
+    @Java9
+    public static byte[] extractBytes(@NotNull String s) {
+<span class="nc" id="L224">        ensureJava9Plus();</span>
+
+<span class="nc" id="L226">        return OS.memory().getObject(s, S_VALUE_OFFSET);</span>
+    }
+
+    public static void setCount(@NotNull StringBuilder sb, int count) {
+<span class="nc" id="L230">        OS.memory().writeInt(sb, SB_COUNT_OFFSET, count);</span>
+<span class="nc" id="L231">    }</span>
+
+    @NotNull
+    public static String newString(@NotNull char[] chars) {
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">        if (Jvm.isJava9Plus()) {</span>
+<span class="nc" id="L236">            return new String(chars);</span>
+        }
+        //noinspection RedundantStringConstructorCall
+<span class="fc" id="L239">        @NotNull String str = new String();</span>
+        try {
+<span class="fc" id="L241">            S_VALUE.set(str, chars);</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">            if (S_COUNT_OFFSET &gt; -1)</span>
+<span class="nc" id="L243">                OS.memory().writeInt(str, S_COUNT_OFFSET, chars.length);</span>
+<span class="fc" id="L244">            return str;</span>
+<span class="nc" id="L245">        } catch (Exception e) {</span>
+<span class="nc" id="L246">            throw new AssertionError(e);</span>
+        }
+    }
+
+    @Java9
+    @NotNull
+    public static String newStringFromBytes(@NotNull byte[] bytes) {
+<span class="nc" id="L253">        ensureJava9Plus();</span>
+        //noinspection RedundantStringConstructorCall
+<span class="nc" id="L255">        @NotNull String str = new String();</span>
+        try {
+<span class="nc" id="L257">            S_VALUE.set(str, bytes);</span>
+<span class="nc" id="L258">            return str;</span>
+<span class="nc" id="L259">        } catch (Exception e) {</span>
+<span class="nc" id="L260">            throw new AssertionError(e);</span>
+        }
+    }
+
+    @Nullable
+    public static String firstLowerCase(@Nullable String str) {
+<span class="pc bpc" id="L266" title="1 of 4 branches missed.">        if (str == null || str.isEmpty())</span>
+<span class="fc" id="L267">            return str;</span>
+<span class="fc" id="L268">        final char ch = str.charAt(0);</span>
+<span class="fc" id="L269">        final char c2 = Character.toLowerCase(ch);</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        return ch == c2 ? str : c2 + str.substring(1);</span>
+    }
+
+    public static double parseDouble(@NotNull CharSequence in) {
+<span class="fc" id="L274">        long value = 0;</span>
+<span class="fc" id="L275">        int exp = 0;</span>
+<span class="fc" id="L276">        boolean negative = false;</span>
+<span class="fc" id="L277">        int decimalPlaces = Integer.MIN_VALUE;</span>
+
+<span class="fc" id="L279">        int ch = in.charAt(0);</span>
+<span class="fc" id="L280">        int pos = 1;</span>
+<span class="fc bfc" id="L281" title="All 4 branches covered.">        switch (ch) {</span>
+            case 'N':
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">                if (compareRest(in, 1, &quot;aN&quot;))</span>
+<span class="fc" id="L284">                    return Double.NaN;</span>
+<span class="nc" id="L285">                return Double.NaN;</span>
+            case 'I':
+                //noinspection SpellCheckingInspection
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">                if (compareRest(in, 1, &quot;nfinity&quot;))</span>
+<span class="fc" id="L289">                    return Double.POSITIVE_INFINITY;</span>
+
+<span class="nc" id="L291">                return Double.NaN;</span>
+            case '-':
+<span class="fc bfc" id="L293" title="All 2 branches covered.">                if (compareRest(in, 1, &quot;Infinity&quot;))</span>
+<span class="fc" id="L294">                    return Double.NEGATIVE_INFINITY;</span>
+<span class="fc" id="L295">                negative = true;</span>
+<span class="fc" id="L296">                ch = in.charAt(pos++);</span>
+                break;
+        }
+        while (true) {
+<span class="pc bpc" id="L300" title="1 of 4 branches missed.">            if (ch &gt;= '0' &amp;&amp; ch &lt;= '9') {</span>
+<span class="pc bpc" id="L301" title="1 of 2 branches missed.">                while (value &gt;= MAX_VALUE_DIVIDE_10) {</span>
+<span class="nc" id="L302">                    value &gt;&gt;&gt;= 1;</span>
+<span class="nc" id="L303">                    exp++;</span>
+                }
+<span class="fc" id="L305">                value = value * 10 + (ch - '0');</span>
+<span class="fc" id="L306">                decimalPlaces++;</span>
+
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">            } else if (ch == '.') {</span>
+<span class="fc" id="L309">                decimalPlaces = 0;</span>
+
+            } else {
+                break;
+            }
+<span class="fc bfc" id="L314" title="All 2 branches covered.">            if (pos == in.length())</span>
+<span class="fc" id="L315">                break;</span>
+<span class="fc" id="L316">            ch = in.charAt(pos++);</span>
+        }
+
+<span class="fc" id="L319">        return asDouble(value, exp, negative, decimalPlaces);</span>
+    }
+
+    private static void ensureJava9Plus() {
+<span class="nc bnc" id="L323" title="All 2 branches missed.">        if (!Jvm.isJava9Plus()) {</span>
+<span class="nc" id="L324">            throw new UnsupportedOperationException(&quot;This method is only supported on Java9+ runtimes&quot;);</span>
+        }
+<span class="nc" id="L326">    }</span>
+
+    private static boolean compareRest(@NotNull CharSequence in,
+                                       int pos, @NotNull String s) {
+
+<span class="fc bfc" id="L331" title="All 2 branches covered.">        if (s.length() &gt; in.length() - pos)</span>
+<span class="fc" id="L332">            return false;</span>
+
+<span class="fc bfc" id="L334" title="All 2 branches covered.">        for (int i = 0; i &lt; s.length(); i++) {</span>
+<span class="pc bpc" id="L335" title="1 of 2 branches missed.">            if (in.charAt(i + pos) != s.charAt(i)) {</span>
+<span class="nc" id="L336">                return false;</span>
+            }
+        }
+<span class="fc" id="L339">        return true;</span>
+    }
+
+    private static double asDouble(long value, int exp, boolean negative, int decimalPlaces) {
+<span class="pc bpc" id="L343" title="1 of 4 branches missed.">        if (decimalPlaces &gt; 0 &amp;&amp; value &lt; Long.MAX_VALUE / 2) {</span>
+<span class="pc bpc" id="L344" title="1 of 2 branches missed.">            if (value &lt; Long.MAX_VALUE / (1L &lt;&lt; 32)) {</span>
+<span class="fc" id="L345">                exp -= 32;</span>
+<span class="fc" id="L346">                value &lt;&lt;= 32;</span>
+            }
+<span class="fc bfc" id="L348" title="All 2 branches covered.">            if (value &lt; Long.MAX_VALUE / (1L &lt;&lt; 16)) {</span>
+<span class="fc" id="L349">                exp -= 16;</span>
+<span class="fc" id="L350">                value &lt;&lt;= 16;</span>
+            }
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">            if (value &lt; Long.MAX_VALUE / (1L &lt;&lt; 8)) {</span>
+<span class="fc" id="L353">                exp -= 8;</span>
+<span class="fc" id="L354">                value &lt;&lt;= 8;</span>
+            }
+<span class="fc bfc" id="L356" title="All 2 branches covered.">            if (value &lt; Long.MAX_VALUE / (1L &lt;&lt; 4)) {</span>
+<span class="fc" id="L357">                exp -= 4;</span>
+<span class="fc" id="L358">                value &lt;&lt;= 4;</span>
+            }
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">            if (value &lt; Long.MAX_VALUE / (1L &lt;&lt; 2)) {</span>
+<span class="fc" id="L361">                exp -= 2;</span>
+<span class="fc" id="L362">                value &lt;&lt;= 2;</span>
+            }
+<span class="fc bfc" id="L364" title="All 2 branches covered.">            if (value &lt; Long.MAX_VALUE / (1L &lt;&lt; 1)) {</span>
+<span class="fc" id="L365">                exp -= 1;</span>
+<span class="fc" id="L366">                value &lt;&lt;= 1;</span>
+            }
+        }
+<span class="fc bfc" id="L369" title="All 2 branches covered.">        for (; decimalPlaces &gt; 0; decimalPlaces--) {</span>
+<span class="fc" id="L370">            exp--;</span>
+<span class="fc" id="L371">            long mod = value % 5;</span>
+<span class="fc" id="L372">            value /= 5;</span>
+<span class="fc" id="L373">            int modDiv = 1;</span>
+<span class="fc bfc" id="L374" title="All 2 branches covered.">            if (value &lt; Long.MAX_VALUE / (1L &lt;&lt; 4)) {</span>
+<span class="fc" id="L375">                exp -= 4;</span>
+<span class="fc" id="L376">                value &lt;&lt;= 4;</span>
+<span class="fc" id="L377">                modDiv &lt;&lt;= 4;</span>
+            }
+<span class="pc bpc" id="L379" title="1 of 2 branches missed.">            if (value &lt; Long.MAX_VALUE / (1L &lt;&lt; 2)) {</span>
+<span class="fc" id="L380">                exp -= 2;</span>
+<span class="fc" id="L381">                value &lt;&lt;= 2;</span>
+<span class="fc" id="L382">                modDiv &lt;&lt;= 2;</span>
+            }
+<span class="fc bfc" id="L384" title="All 2 branches covered.">            if (value &lt; Long.MAX_VALUE / (1L &lt;&lt; 1)) {</span>
+<span class="fc" id="L385">                exp -= 1;</span>
+<span class="fc" id="L386">                value &lt;&lt;= 1;</span>
+<span class="fc" id="L387">                modDiv &lt;&lt;= 1;</span>
+            }
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">            if (decimalPlaces &gt; 1)</span>
+<span class="nc" id="L390">                value += modDiv * mod / 5;</span>
+            else
+<span class="fc" id="L392">                value += (modDiv * mod + 4) / 5;</span>
+        }
+<span class="fc" id="L394">        final double d = Math.scalb((double) value, exp);</span>
+<span class="fc bfc" id="L395" title="All 2 branches covered.">        return negative ? -d : d;</span>
+    }
+
+    @Nullable
+    public static String toTitleCase(@Nullable String name) {
+<span class="pc bpc" id="L400" title="1 of 4 branches missed.">        if (name == null || name.isEmpty())</span>
+<span class="fc" id="L401">            return name;</span>
+<span class="fc" id="L402">        @NotNull StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L403">        sb.append(Character.toUpperCase(name.charAt(0)));</span>
+<span class="fc" id="L404">        boolean wasUnder = false;</span>
+<span class="fc bfc" id="L405" title="All 2 branches covered.">        for (int i = 1; i &lt; name.length(); i++) {</span>
+<span class="fc" id="L406">            char ch0 = name.charAt(i);</span>
+<span class="fc bfc" id="L407" title="All 2 branches covered.">            char ch1 = i + 1 &lt; name.length() ? name.charAt(i + 1) : ' ';</span>
+<span class="fc bfc" id="L408" title="All 2 branches covered.">            if (Character.isLowerCase(ch0)) {</span>
+<span class="fc" id="L409">                sb.append(Character.toUpperCase(ch0));</span>
+<span class="fc bfc" id="L410" title="All 2 branches covered.">                if (Character.isUpperCase(ch1)) {</span>
+<span class="fc" id="L411">                    sb.append('_');</span>
+<span class="fc" id="L412">                    wasUnder = true;</span>
+                } else {
+<span class="fc" id="L414">                    wasUnder = false;</span>
+                }
+<span class="fc bfc" id="L416" title="All 2 branches covered.">            } else if (Character.isUpperCase(ch0)) {</span>
+<span class="fc bfc" id="L417" title="All 4 branches covered.">                if (!wasUnder &amp;&amp; Character.isLowerCase(ch1)) {</span>
+<span class="fc" id="L418">                    sb.append('_');</span>
+                }
+<span class="fc" id="L420">                sb.append(ch0);</span>
+<span class="fc" id="L421">                wasUnder = false;</span>
+            } else {
+<span class="fc" id="L423">                sb.append(ch0);</span>
+<span class="pc bpc" id="L424" title="1 of 2 branches missed.">                wasUnder = ch0 == '_';</span>
+            }
+        }
+<span class="fc" id="L427">        return sb.toString();</span>
+    }
+
+    public static void reverse(StringBuilder text, int start) {
+<span class="nc" id="L431">        int end = text.length() - 1;</span>
+<span class="nc" id="L432">        int mid = (start + end + 1) / 2;</span>
+<span class="nc bnc" id="L433" title="All 2 branches missed.">        for (int i = 0; i &lt; mid - start; i++) {</span>
+<span class="nc" id="L434">            char ch = text.charAt(start + i);</span>
+<span class="nc" id="L435">            text.setCharAt(start + i, text.charAt(end - i));</span>
+<span class="nc" id="L436">            text.setCharAt(end - i, ch);</span>
+        }
+<span class="nc" id="L438">    }</span>
+
+    public static int parseInt(CharSequence s, int radix)
+            throws NumberFormatException {
+        /*
+         * WARNING: This method may be invoked early during VM initialization
+         * before IntegerCache is initialized. Care must be taken to not use
+         * the valueOf method.
+         */
+
+<span class="nc bnc" id="L448" title="All 2 branches missed.">        if (s == null) {</span>
+<span class="nc" id="L449">            throw new NumberFormatException(&quot;null&quot;);</span>
+        }
+
+<span class="nc bnc" id="L452" title="All 2 branches missed.">        if (radix &lt; Character.MIN_RADIX) {</span>
+<span class="nc" id="L453">            throw new NumberFormatException(&quot;radix &quot; + radix +</span>
+                    &quot; less than Character.MIN_RADIX&quot;);
+        }
+
+<span class="nc bnc" id="L457" title="All 2 branches missed.">        if (radix &gt; Character.MAX_RADIX) {</span>
+<span class="nc" id="L458">            throw new NumberFormatException(&quot;radix &quot; + radix +</span>
+                    &quot; greater than Character.MAX_RADIX&quot;);
+        }
+
+<span class="nc" id="L462">        int result = 0;</span>
+<span class="nc" id="L463">        boolean negative = false;</span>
+<span class="nc" id="L464">        int i = 0, len = s.length();</span>
+<span class="nc" id="L465">        int limit = -Integer.MAX_VALUE;</span>
+        int multmin;
+        int digit;
+
+<span class="nc bnc" id="L469" title="All 2 branches missed.">        if (len &gt; 0) {</span>
+<span class="nc" id="L470">            char firstChar = s.charAt(0);</span>
+<span class="nc bnc" id="L471" title="All 2 branches missed.">            if (firstChar &lt; '0') { // Possible leading &quot;+&quot; or &quot;-&quot;</span>
+<span class="nc bnc" id="L472" title="All 2 branches missed.">                if (firstChar == '-') {</span>
+<span class="nc" id="L473">                    negative = true;</span>
+<span class="nc" id="L474">                    limit = Integer.MIN_VALUE;</span>
+<span class="nc bnc" id="L475" title="All 2 branches missed.">                } else if (firstChar != '+')</span>
+<span class="nc" id="L476">                    throw forInputString(s);</span>
+
+<span class="nc bnc" id="L478" title="All 2 branches missed.">                if (len == 1) // Cannot have lone &quot;+&quot; or &quot;-&quot;</span>
+<span class="nc" id="L479">                    throw forInputString(s);</span>
+<span class="nc" id="L480">                i++;</span>
+            }
+<span class="nc" id="L482">            multmin = limit / radix;</span>
+<span class="nc bnc" id="L483" title="All 2 branches missed.">            while (i &lt; len) {</span>
+                // Accumulating negatively avoids surprises near MAX_VALUE
+<span class="nc" id="L485">                digit = Character.digit(s.charAt(i++), radix);</span>
+<span class="nc bnc" id="L486" title="All 2 branches missed.">                if (digit &lt; 0) {</span>
+<span class="nc" id="L487">                    throw forInputString(s);</span>
+                }
+<span class="nc bnc" id="L489" title="All 2 branches missed.">                if (result &lt; multmin) {</span>
+<span class="nc" id="L490">                    throw forInputString(s);</span>
+                }
+<span class="nc" id="L492">                result *= radix;</span>
+<span class="nc bnc" id="L493" title="All 2 branches missed.">                if (result &lt; limit + digit) {</span>
+<span class="nc" id="L494">                    throw forInputString(s);</span>
+                }
+<span class="nc" id="L496">                result -= digit;</span>
+            }
+<span class="nc" id="L498">        } else {</span>
+<span class="nc" id="L499">            throw forInputString(s);</span>
+        }
+<span class="nc bnc" id="L501" title="All 2 branches missed.">        return negative ? result : -result;</span>
+    }
+
+    static NumberFormatException forInputString(CharSequence s) {
+<span class="nc" id="L505">        return new NumberFormatException(&quot;For input string: \&quot;&quot; + s + &quot;\&quot;&quot;);</span>
+    }
+
+    public static long parseLong(CharSequence s, int radix)
+            throws NumberFormatException {
+<span class="nc bnc" id="L510" title="All 2 branches missed.">        if (s == null) {</span>
+<span class="nc" id="L511">            throw new NumberFormatException(&quot;null&quot;);</span>
+        }
+
+<span class="nc bnc" id="L514" title="All 2 branches missed.">        if (radix &lt; Character.MIN_RADIX) {</span>
+<span class="nc" id="L515">            throw new NumberFormatException(&quot;radix &quot; + radix +</span>
+                    &quot; less than Character.MIN_RADIX&quot;);
+        }
+<span class="nc bnc" id="L518" title="All 2 branches missed.">        if (radix &gt; Character.MAX_RADIX) {</span>
+<span class="nc" id="L519">            throw new NumberFormatException(&quot;radix &quot; + radix +</span>
+                    &quot; greater than Character.MAX_RADIX&quot;);
+        }
+
+<span class="nc" id="L523">        long result = 0;</span>
+<span class="nc" id="L524">        boolean negative = false;</span>
+<span class="nc" id="L525">        int i = 0, len = s.length();</span>
+<span class="nc" id="L526">        long limit = -Long.MAX_VALUE;</span>
+        long multmin;
+        int digit;
+
+<span class="nc bnc" id="L530" title="All 2 branches missed.">        if (len &gt; 0) {</span>
+<span class="nc" id="L531">            char firstChar = s.charAt(0);</span>
+<span class="nc bnc" id="L532" title="All 2 branches missed.">            if (firstChar &lt; '0') { // Possible leading &quot;+&quot; or &quot;-&quot;</span>
+<span class="nc bnc" id="L533" title="All 2 branches missed.">                if (firstChar == '-') {</span>
+<span class="nc" id="L534">                    negative = true;</span>
+<span class="nc" id="L535">                    limit = Long.MIN_VALUE;</span>
+<span class="nc bnc" id="L536" title="All 2 branches missed.">                } else if (firstChar != '+')</span>
+<span class="nc" id="L537">                    throw forInputString(s);</span>
+
+<span class="nc bnc" id="L539" title="All 2 branches missed.">                if (len == 1) // Cannot have lone &quot;+&quot; or &quot;-&quot;</span>
+<span class="nc" id="L540">                    throw forInputString(s);</span>
+<span class="nc" id="L541">                i++;</span>
+            }
+<span class="nc" id="L543">            multmin = limit / radix;</span>
+<span class="nc bnc" id="L544" title="All 2 branches missed.">            while (i &lt; len) {</span>
+                // Accumulating negatively avoids surprises near MAX_VALUE
+<span class="nc" id="L546">                digit = Character.digit(s.charAt(i++), radix);</span>
+<span class="nc bnc" id="L547" title="All 2 branches missed.">                if (digit &lt; 0) {</span>
+<span class="nc" id="L548">                    throw forInputString(s);</span>
+                }
+<span class="nc bnc" id="L550" title="All 2 branches missed.">                if (result &lt; multmin) {</span>
+<span class="nc" id="L551">                    throw forInputString(s);</span>
+                }
+<span class="nc" id="L553">                result *= radix;</span>
+<span class="nc bnc" id="L554" title="All 2 branches missed.">                if (result &lt; limit + digit) {</span>
+<span class="nc" id="L555">                    throw forInputString(s);</span>
+                }
+<span class="nc" id="L557">                result -= digit;</span>
+            }
+<span class="nc" id="L559">        } else {</span>
+<span class="nc" id="L560">            throw forInputString(s);</span>
+        }
+<span class="nc bnc" id="L562" title="All 2 branches missed.">        return negative ? result : -result;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

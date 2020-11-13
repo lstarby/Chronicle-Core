@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ClassAliasPool.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.pool</a> &gt; <span class="el_source">ClassAliasPool.java</span></div><h1>ClassAliasPool.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core.pool;
+
+import net.openhft.chronicle.core.Jvm;
+import org.jetbrains.annotations.NotNull;
+
+import java.lang.reflect.Array;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZonedDateTime;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+
+public class ClassAliasPool implements ClassLookup {
+<span class="fc" id="L34">    public static final ClassAliasPool CLASS_ALIASES = new ClassAliasPool(null).defaultAliases();</span>
+<span class="fc" id="L35">    static final ThreadLocal&lt;CAPKey&gt; CAP_KEY_TL = ThreadLocal.withInitial(() -&gt; new CAPKey(null));</span>
+    private final ClassLookup parent;
+    private final ClassLoader classLoader;
+<span class="pc" id="L38">    private final Map&lt;CAPKey, Class&gt; stringClassMap = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="pc" id="L39">    private final Map&lt;CAPKey, Class&gt; stringClassMap2 = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="pc" id="L40">    private final Map&lt;Class, String&gt; classStringMap = new ConcurrentHashMap&lt;&gt;();</span>
+
+<span class="nc" id="L42">    ClassAliasPool(ClassLookup parent, ClassLoader classLoader) {</span>
+<span class="nc" id="L43">        this.parent = parent;</span>
+<span class="nc" id="L44">        this.classLoader = classLoader;</span>
+<span class="nc" id="L45">    }</span>
+
+<span class="fc" id="L47">    ClassAliasPool(ClassLookup parent) {</span>
+<span class="fc" id="L48">        this.parent = parent;</span>
+<span class="fc" id="L49">        this.classLoader = getClass().getClassLoader();</span>
+<span class="fc" id="L50">    }</span>
+
+    public static void a(Class clazz) {
+<span class="nc" id="L53">        throw Jvm.rethrow(new AssertionError(clazz));</span>
+    }
+
+    protected static boolean testPackage(String pkgName, Class clazz) {
+<span class="nc" id="L57">        Package aPackage = clazz.getPackage();</span>
+<span class="nc bnc" id="L58" title="All 4 branches missed.">        return aPackage != null &amp;&amp; aPackage.getName().startsWith(pkgName);</span>
+    }
+
+    @NotNull
+    private ClassAliasPool defaultAliases() {
+<span class="fc" id="L63">        addAlias(Set.class, &quot;!set&quot;);</span>
+<span class="fc" id="L64">        addAlias(BitSet.class, &quot;!bitset&quot;);</span>
+<span class="fc" id="L65">        addAlias(SortedSet.class, &quot;!oset&quot;);</span>
+<span class="fc" id="L66">        addAlias(List.class, &quot;!seq&quot;);</span>
+<span class="fc" id="L67">        addAlias(Map.class, &quot;!map&quot;);</span>
+<span class="fc" id="L68">        addAlias(SortedMap.class, &quot;!omap&quot;);</span>
+<span class="fc" id="L69">        addAlias(String.class, &quot;String, !str&quot;);</span>
+<span class="fc" id="L70">        addAlias(CharSequence.class);</span>
+<span class="fc" id="L71">        addAlias(Byte.class, &quot;byte, int8&quot;);</span>
+<span class="fc" id="L72">        addAlias(Short.class, &quot;short, int16&quot;);</span>
+<span class="fc" id="L73">        addAlias(Character.class, &quot;Char&quot;);</span>
+<span class="fc" id="L74">        addAlias(Integer.class, &quot;int, int32&quot;);</span>
+<span class="fc" id="L75">        addAlias(Long.class, &quot;long, int64&quot;);</span>
+<span class="fc" id="L76">        addAlias(Float.class, &quot;Float32&quot;);</span>
+<span class="fc" id="L77">        addAlias(Double.class, &quot;Float64&quot;);</span>
+<span class="fc" id="L78">        addAlias(LocalDate.class, &quot;Date&quot;);</span>
+<span class="fc" id="L79">        addAlias(LocalDateTime.class, &quot;DateTime&quot;);</span>
+<span class="fc" id="L80">        addAlias(LocalTime.class, &quot;Time&quot;);</span>
+<span class="fc" id="L81">        addAlias(ZonedDateTime.class, &quot;ZonedDateTime&quot;);</span>
+<span class="fc" id="L82">        addAlias(TimeUnit.class, &quot;TimeUnit&quot;);</span>
+<span class="fc" id="L83">        addAlias(Byte[].class, &quot;Byte[]&quot;);</span>
+<span class="fc" id="L84">        addAlias(String[].class, &quot;String[]&quot;);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        for (@NotNull Class prim : new Class[]{boolean.class, byte.class, short.class, char.class, int.class, long.class, float.class, double.class})</span>
+<span class="fc" id="L86">            addAlias(Array.newInstance(prim, 0).getClass(), prim.getName() + &quot;[]&quot;);</span>
+<span class="fc" id="L87">        addAlias(Class.class, &quot;type&quot;);</span>
+<span class="fc" id="L88">        addAlias(void.class, &quot;!null&quot;);</span>
+
+<span class="fc" id="L90">        return this;</span>
+    }
+
+    /**
+     * remove classes which are not in the default class loaders.
+     */
+    public void clean() {
+<span class="fc" id="L97">        clean(stringClassMap.values());</span>
+<span class="fc" id="L98">        clean(stringClassMap2.values());</span>
+<span class="fc" id="L99">        clean(classStringMap.keySet());</span>
+<span class="fc" id="L100">    }</span>
+
+    private void clean(@NotNull Iterable&lt;Class&gt; coll) {
+<span class="fc" id="L103">        ClassLoader classLoader2 = ClassAliasPool.class.getClassLoader();</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        for (Iterator&lt;Class&gt; iter = coll.iterator(); iter.hasNext(); ) {</span>
+<span class="fc" id="L105">            Class clazz = iter.next();</span>
+<span class="fc" id="L106">            ClassLoader classLoader = clazz.getClassLoader();</span>
+<span class="pc bpc" id="L107" title="3 of 4 branches missed.">            if (classLoader == null || classLoader == classLoader2)</span>
+<span class="nc" id="L108">                continue;</span>
+<span class="nc" id="L109">            iter.remove();</span>
+<span class="nc" id="L110">        }</span>
+<span class="fc" id="L111">    }</span>
+
+    @Override
+    @NotNull
+    public Class forName(@NotNull CharSequence name) {
+<span class="fc" id="L116">        Objects.requireNonNull(name);</span>
+<span class="fc" id="L117">        CAPKey key = CAP_KEY_TL.get();</span>
+<span class="fc" id="L118">        key.value = name;</span>
+<span class="fc" id="L119">        Class clazz = stringClassMap.get(key);</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        if (clazz != null)</span>
+<span class="nc" id="L121">            return clazz;</span>
+<span class="fc" id="L122">        clazz = stringClassMap2.get(key);</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if (clazz != null) return clazz;</span>
+<span class="nc" id="L124">        return forName0(key);</span>
+    }
+
+    @NotNull
+    private synchronized Class forName0(@NotNull CAPKey key) {
+<span class="nc" id="L129">        Class clazz = stringClassMap2.get(key);</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        if (clazz != null) return clazz;</span>
+<span class="nc" id="L131">        String name0 = key.toString();</span>
+<span class="nc" id="L132">        CAPKey key2 = new CAPKey(name0);</span>
+
+        try {
+<span class="nc" id="L135">            clazz = Class.forName(name0, true, classLoader);</span>
+
+<span class="nc" id="L137">        } catch (ClassNotFoundException e) {</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">            if (parent != null) {</span>
+                try {
+<span class="nc" id="L140">                    return parent.forName(name0);</span>
+<span class="nc" id="L141">                } catch (ClassNotFoundException e2) {</span>
+                    // ignored.
+                }
+            }
+<span class="nc" id="L145">            throw Jvm.rethrow(e);</span>
+<span class="nc" id="L146">        }</span>
+<span class="nc" id="L147">        stringClassMap2.put(key2, clazz);</span>
+<span class="nc" id="L148">        return clazz;</span>
+    }
+
+    @Override
+    public String nameFor(Class clazz) {
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">        if (clazz.getName().contains(&quot;$$Lambda$&quot;))</span>
+<span class="nc" id="L154">            throw new IllegalArgumentException(&quot;Class name for &quot; + clazz + &quot; isn't meaningful.&quot;);</span>
+<span class="fc" id="L155">        String name = classStringMap.get(clazz);</span>
+<span class="pc bpc" id="L156" title="1 of 4 branches missed.">        return name == null</span>
+                ? parent == null
+<span class="pc" id="L158">                ? nameFor0(clazz)</span>
+<span class="pc" id="L159">                : parent.nameFor(clazz)</span>
+                : name;
+    }
+
+    private String nameFor0(Class clazz) {
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        if (Enum.class.isAssignableFrom(clazz)) {</span>
+<span class="fc" id="L165">            Class clazz2 = clazz.getSuperclass();</span>
+<span class="pc bpc" id="L166" title="2 of 6 branches missed.">            if (clazz2 != null &amp;&amp; clazz2 != Enum.class &amp;&amp; Enum.class.isAssignableFrom(clazz2)) {</span>
+<span class="fc" id="L167">                String alias = classStringMap.get(clazz2);</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                if (alias != null) {</span>
+<span class="nc" id="L169">                    classStringMap.putIfAbsent(clazz, alias);</span>
+<span class="nc" id="L170">                    return alias;</span>
+                }
+<span class="fc" id="L172">                return clazz2.getName();</span>
+            }
+        }
+<span class="fc" id="L175">        return clazz.getName();</span>
+    }
+
+    public void removePackage(String pkgName) {
+<span class="nc" id="L179">        stringClassMap.entrySet().removeIf(e -&gt; testPackage(pkgName, e.getValue()));</span>
+<span class="nc" id="L180">        stringClassMap2.entrySet().removeIf(e -&gt; testPackage(pkgName, e.getValue()));</span>
+<span class="nc" id="L181">        classStringMap.entrySet().removeIf(e -&gt; testPackage(pkgName, e.getKey()));</span>
+<span class="nc" id="L182">    }</span>
+
+    @Override
+    public void addAlias(@NotNull Class... classes) {
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        for (@NotNull Class clazz : classes) {</span>
+<span class="fc" id="L187">            stringClassMap.putIfAbsent(new CAPKey(clazz.getName()), clazz);</span>
+<span class="fc" id="L188">            stringClassMap2.putIfAbsent(new CAPKey(clazz.getSimpleName()), clazz);</span>
+<span class="fc" id="L189">            stringClassMap2.putIfAbsent(new CAPKey(toCamelCase(clazz.getSimpleName())), clazz);</span>
+<span class="fc" id="L190">            classStringMap.computeIfAbsent(clazz, Class::getSimpleName);</span>
+        }
+<span class="fc" id="L192">    }</span>
+
+    // to lower camel case.
+    @NotNull
+    private String toCamelCase(@NotNull String name) {
+<span class="fc" id="L197">        return Character.toLowerCase(name.charAt(0)) + name.substring(1);</span>
+    }
+
+    @Override
+    public void addAlias(Class clazz, @NotNull String names) {
+<span class="fc bfc" id="L202" title="All 2 branches covered.">        for (@NotNull String name : names.split(&quot;, ?&quot;)) {</span>
+<span class="fc" id="L203">            stringClassMap.put(new CAPKey(name), clazz);</span>
+<span class="fc" id="L204">            stringClassMap2.putIfAbsent(new CAPKey(toCamelCase(name)), clazz);</span>
+<span class="fc" id="L205">            classStringMap.putIfAbsent(clazz, name);</span>
+<span class="fc" id="L206">            addAlias(clazz);</span>
+        }
+<span class="fc" id="L208">    }</span>
+
+    static class CAPKey implements CharSequence {
+        CharSequence value;
+
+<span class="fc" id="L213">        CAPKey(String name) {</span>
+<span class="fc" id="L214">            value = name;</span>
+<span class="fc" id="L215">        }</span>
+
+        @Override
+        public int length() {
+<span class="fc" id="L219">            return value.length();</span>
+        }
+
+        @Override
+        public char charAt(int index) throws IndexOutOfBoundsException {
+<span class="fc" id="L224">            return value.charAt(index);</span>
+        }
+
+        @NotNull
+        @Override
+        public CharSequence subSequence(int start, int end) {
+<span class="nc" id="L230">            throw new UnsupportedOperationException();</span>
+        }
+
+        @NotNull
+        @Override
+        public String toString() {
+<span class="nc" id="L236">            return value.toString();</span>
+        }
+
+        @Override
+        public int hashCode() {
+<span class="fc bfc" id="L241" title="All 2 branches covered.">            if (value instanceof String)</span>
+<span class="fc" id="L242">                return value.hashCode();</span>
+<span class="fc" id="L243">            int h = 0;</span>
+            try {
+<span class="fc bfc" id="L245" title="All 2 branches covered.">                for (int i = 0; i &lt; value.length(); i++) {</span>
+<span class="fc" id="L246">                    h = 31 * h + charAt(i);</span>
+                }
+<span class="nc" id="L248">            } catch (IndexOutOfBoundsException e) {</span>
+<span class="nc" id="L249">                throw new AssertionError(e);</span>
+<span class="fc" id="L250">            }</span>
+<span class="fc" id="L251">            return h;</span>
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">            if (!(obj instanceof CharSequence))</span>
+<span class="nc" id="L257">                return false;</span>
+
+<span class="fc" id="L259">            CharSequence cs = (CharSequence) obj;</span>
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">            if (length() != cs.length())</span>
+<span class="nc" id="L261">                return false;</span>
+            try {
+<span class="fc bfc" id="L263" title="All 2 branches covered.">                for (int i = 0; i &lt; length(); i++)</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">                    if (charAt(i) != cs.charAt(i))</span>
+<span class="nc" id="L265">                        return false;</span>
+<span class="nc" id="L266">            } catch (IndexOutOfBoundsException e) {</span>
+<span class="nc" id="L267">                throw new AssertionError(e);</span>
+<span class="fc" id="L268">            }</span>
+<span class="fc" id="L269">            return true;</span>
+        }
+    }
+
+/**\u002f
+ public static void a\u202e(Class... classes) {
+<span class="nc" id="L275"> CLASS_ALIASES.addAlias(classes);</span>
+<span class="nc" id="L276"> }</span>
+ \u002f**/
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

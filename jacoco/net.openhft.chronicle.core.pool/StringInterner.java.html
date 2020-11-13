@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StringInterner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.pool</a> &gt; <span class="el_source">StringInterner.java</span></div><h1>StringInterner.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core.pool;
+
+import net.openhft.chronicle.core.Maths;
+import net.openhft.chronicle.core.util.StringUtils;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.Objects;
+import java.util.stream.Stream;
+
+/**
+ * &lt;p&gt;
+ * StringInterner only guarantees it will behave in a correct manner. When you ask it for a String for a given input, it must return a String which matches the toString() of that CharSequence.
+ * &lt;/p&gt;&lt;p&gt;
+ * It doesn't guarantee that all threads see the same data, nor that multiple threads will return the same String object for the same string. It is designed to be a best-effort basis so it can be as lightweight as possible.
+ * &lt;/p&gt;&lt;p&gt;
+ * So while technically not thread safe, it doesn't prevent it operating correctly when used from multiple threads, but it is faster than added explicit locking or thread safety. NOTE: It does rely on String being thread safe, something which was guaranteed from Java 5.0 onwards c.f. JSR 133.
+ * &lt;/p&gt;&lt;p&gt;
+ * Discussion https://stackoverflow.com/questions/63383745/string-array-needless-synchronization/63383983
+ * &lt;/p&gt;
+ *
+ * @author peter.lawrey
+ */
+public class StringInterner {
+    @NotNull
+    protected final String[] interner;
+    protected final int mask, shift;
+<span class="fc" id="L46">    protected boolean toggle = false;</span>
+
+<span class="fc" id="L48">    public StringInterner(int capacity) throws IllegalArgumentException {</span>
+<span class="fc" id="L49">        int n = Maths.nextPower2(capacity, 128);</span>
+<span class="fc" id="L50">        shift = Maths.intLog2(n);</span>
+<span class="fc" id="L51">        interner = new String[n];</span>
+<span class="fc" id="L52">        mask = n - 1;</span>
+<span class="fc" id="L53">    }</span>
+
+    @Nullable
+    public String intern(@Nullable CharSequence cs) {
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (cs == null)</span>
+<span class="nc" id="L58">            return null;</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (cs.length() &gt; interner.length)</span>
+<span class="nc" id="L60">            return cs.toString();</span>
+<span class="fc" id="L61">        int hash = Maths.hash32(cs);</span>
+<span class="fc" id="L62">        int h = hash &amp; mask;</span>
+<span class="fc" id="L63">        String s = interner[h];</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (StringUtils.isEqual(cs, s))</span>
+<span class="fc" id="L65">            return s;</span>
+<span class="fc" id="L66">        int h2 = (hash &gt;&gt; shift) &amp; mask;</span>
+<span class="fc" id="L67">        String s2 = interner[h2];</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        if (StringUtils.isEqual(cs, s2))</span>
+<span class="nc" id="L69">            return s2;</span>
+<span class="fc" id="L70">        @NotNull String s3 = cs.toString();</span>
+<span class="fc bfc" id="L71" title="All 6 branches covered.">        interner[s == null || (s2 != null &amp;&amp; toggle()) ? h : h2] = s3;</span>
+
+<span class="fc" id="L73">        return s3;</span>
+    }
+
+    protected boolean toggle() {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        return toggle = !toggle;</span>
+    }
+
+    public int valueCount() {
+<span class="fc" id="L81">        return (int) Stream.of(interner).filter(Objects::nonNull).count();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

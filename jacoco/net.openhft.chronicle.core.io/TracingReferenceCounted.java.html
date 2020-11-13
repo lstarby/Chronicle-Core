@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TracingReferenceCounted.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.io</a> &gt; <span class="el_source">TracingReferenceCounted.java</span></div><h1>TracingReferenceCounted.java</h1><pre class="source lang-java linenums">/*
+ * Copyright (c) 2016-2020 chronicle.software
+ */
+
+package net.openhft.chronicle.core.io;
+
+import net.openhft.chronicle.core.StackTrace;
+import net.openhft.chronicle.core.onoes.Slf4jExceptionHandler;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+
+public final class TracingReferenceCounted implements MonitorReferenceCounted {
+<span class="fc" id="L19">    private final Map&lt;ReferenceOwner, StackTrace&gt; references = Collections.synchronizedMap(new IdentityHashMap&lt;&gt;());</span>
+<span class="fc" id="L20">    private final Map&lt;ReferenceOwner, StackTrace&gt; releases = Collections.synchronizedMap(new IdentityHashMap&lt;&gt;());</span>
+    private final Runnable onRelease;
+    private final String uniqueId;
+    private final StackTrace createdHere;
+<span class="fc" id="L24">    private final AtomicInteger onReleaseCount = new AtomicInteger();</span>
+    private volatile StackTrace releasedHere;
+
+<span class="fc" id="L27">    TracingReferenceCounted(final Runnable onRelease, String uniqueId) {</span>
+<span class="fc" id="L28">        this.onRelease = onRelease;</span>
+<span class="fc" id="L29">        this.uniqueId = uniqueId;</span>
+<span class="fc" id="L30">        createdHere = stackTrace(&quot;init&quot;, INIT);</span>
+<span class="fc" id="L31">        references.put(INIT, createdHere);</span>
+<span class="fc" id="L32">    }</span>
+
+    static String asString(Object id) {
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (id == INIT) return &quot;INIT&quot;;</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">        String s = id instanceof ReferenceOwner</span>
+<span class="pc" id="L37">                ? ((ReferenceOwner) id).referenceName()</span>
+<span class="pc" id="L38">                : id.getClass().getSimpleName() + &quot;@&quot; + Integer.toHexString(System.identityHashCode(id));</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">        if (id instanceof ReferenceCounted)</span>
+<span class="nc" id="L40">            s += &quot; refCount=&quot; + ((ReferenceCounted) id).refCount();</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (id instanceof Closeable)</span>
+<span class="nc" id="L42">            s += &quot; closed=&quot; + ((Closeable) id).isClosed();</span>
+<span class="fc" id="L43">        return s;</span>
+    }
+
+    @Override
+    public StackTrace createdHere() {
+<span class="nc" id="L48">        return createdHere;</span>
+    }
+
+    @Override
+    public boolean reservedBy(ReferenceOwner owner) {
+<span class="nc bnc" id="L53" title="All 2 branches missed.">        if (references.containsKey(owner))</span>
+<span class="nc" id="L54">            return true;</span>
+<span class="nc" id="L55">        StackTrace stackTrace = releases.get(owner);</span>
+<span class="nc bnc" id="L56" title="All 2 branches missed.">        if (stackTrace == null)</span>
+<span class="nc" id="L57">            throw new IllegalStateException(&quot;Never reserved by &quot; + asString(owner));</span>
+<span class="nc" id="L58">        throw new IllegalStateException(&quot;No longer reserved by &quot; + asString(owner), stackTrace);</span>
+    }
+
+    @Override
+    public void reserve(ReferenceOwner id) throws IllegalStateException {
+<span class="fc" id="L63">        tryReserve(id, true);</span>
+<span class="fc" id="L64">    }</span>
+
+    @Override
+    public boolean tryReserve(ReferenceOwner id) {
+<span class="nc" id="L68">        return tryReserve(id, false);</span>
+    }
+
+    private boolean tryReserve(ReferenceOwner id, boolean must) {
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (id == this)</span>
+<span class="nc" id="L73">            throw new IllegalArgumentException(&quot;The counter cannot reserve itself&quot;);</span>
+//        if (Jvm.isDebug())
+//            System.out.println(Thread.currentThread().getName() + &quot; &quot; + uniqueId + &quot; - tryReserve &quot; + asString(id));
+<span class="fc" id="L76">        synchronized (references) {</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">            if (references.isEmpty()) {</span>
+<span class="nc bnc" id="L78" title="All 2 branches missed.">                if (must)</span>
+<span class="nc" id="L79">                    throw new ClosedIllegalStateException(&quot;Cannot reserve freed resource&quot;, createdHere);</span>
+<span class="nc" id="L80">                return false;</span>
+            }
+<span class="fc" id="L82">            StackTrace stackTrace = references.get(id);</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            if (stackTrace == null)</span>
+<span class="fc" id="L84">                references.putIfAbsent(id, stackTrace(&quot;reserve&quot;, id));</span>
+            else
+<span class="fc" id="L86">                throw new IllegalStateException(&quot;Already reserved resource by &quot; + asString(id) + &quot; here&quot;, stackTrace);</span>
+<span class="fc" id="L87">        }</span>
+<span class="fc" id="L88">        releases.remove(id);</span>
+<span class="fc" id="L89">        return true;</span>
+    }
+
+    @Override
+    public void release(ReferenceOwner id) throws IllegalStateException {
+//        if (Jvm.isDebug())
+//            System.out.println(Thread.currentThread().getName() + &quot; &quot; + uniqueId + &quot; - release &quot; + asString(id));
+
+<span class="fc" id="L97">        boolean doOnRelease = false;</span>
+<span class="fc" id="L98">        synchronized (references) {</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            if (references.remove(id) == null) {</span>
+<span class="nc" id="L100">                StackTrace stackTrace = releases.get(id);</span>
+<span class="nc bnc" id="L101" title="All 2 branches missed.">                if (stackTrace == null) {</span>
+<span class="nc" id="L102">                    Throwable cause = createdHere;</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">                    if (!references.isEmpty()) {</span>
+<span class="nc" id="L104">                        StackTrace ste = references.values().iterator().next();</span>
+<span class="nc" id="L105">                        cause = new IllegalStateException(&quot;Reserved by &quot; + referencesAsString(), ste);</span>
+                    }
+<span class="nc" id="L107">                    throw new IllegalStateException(&quot;Not reserved by &quot; + asString(id), cause);</span>
+                } else {
+<span class="nc" id="L109">                    throw new ClosedIllegalStateException(&quot;Already released &quot; + asString(id) + &quot; location &quot;, stackTrace);</span>
+                }
+            }
+<span class="fc" id="L112">            releases.put(id, stackTrace(&quot;release&quot;, id));</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            if (references.isEmpty()) {</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">                if (releasedHere != null) {</span>
+<span class="nc" id="L115">                    throw new IllegalStateException(&quot;Already released&quot;, releasedHere);</span>
+                }
+<span class="fc" id="L117">                releasedHere = new StackTrace(getClass() + &quot; - Release here&quot;);</span>
+                // prevent this being called more than once.
+<span class="fc" id="L119">                doOnRelease = true;</span>
+            }
+<span class="fc" id="L121">        }</span>
+        // needs to be called outside synchronized block above to avoid deadlock.
+<span class="pc bpc" id="L123" title="1 of 4 branches missed.">        if (doOnRelease &amp;&amp; onReleaseCount.getAndIncrement() == 0)</span>
+<span class="fc" id="L124">            onRelease.run();</span>
+<span class="fc" id="L125">    }</span>
+
+    @NotNull
+    public List&lt;String&gt; referencesAsString() {
+<span class="nc" id="L129">        synchronized (references) {</span>
+<span class="nc" id="L130">            return references.keySet().stream()</span>
+<span class="nc" id="L131">                    .map(TracingReferenceCounted::asString)</span>
+<span class="nc" id="L132">                    .collect(Collectors.toList());</span>
+        }
+    }
+
+    @Override
+    public void releaseLast(ReferenceOwner id) throws IllegalStateException {
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">        if (references.size() &lt;= 1) {</span>
+<span class="fc" id="L139">            release(id);</span>
+        } else {
+<span class="nc" id="L141">            Exception e0 = null;</span>
+            try {
+<span class="nc" id="L143">                release(id);</span>
+<span class="nc" id="L144">            } catch (Exception e) {</span>
+<span class="nc" id="L145">                e0 = e;</span>
+<span class="nc" id="L146">            }</span>
+<span class="nc" id="L147">            IllegalStateException ise = new IllegalStateException(&quot;Still reserved &quot; + referencesAsString(), createdHere);</span>
+<span class="nc" id="L148">            synchronized (references) {</span>
+<span class="nc" id="L149">                references.values().forEach(ise::addSuppressed);</span>
+<span class="nc" id="L150">            }</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">            if (e0 != null)</span>
+<span class="nc" id="L152">                ise.addSuppressed(e0);</span>
+<span class="nc" id="L153">            throw ise;</span>
+        }
+<span class="fc" id="L155">    }</span>
+
+    @Override
+    public int refCount() {
+<span class="fc" id="L159">        return references.size();</span>
+    }
+
+    @NotNull
+    public String toString() {
+<span class="nc" id="L164">        return uniqueId + &quot; - &quot; + referencesAsString();</span>
+    }
+
+    @NotNull
+    private StackTrace stackTrace(String oper, ReferenceOwner ro) {
+<span class="fc" id="L169">        return new StackTrace(uniqueId + &quot; &quot;</span>
+<span class="fc" id="L170">                + Thread.currentThread().getName() + &quot; &quot;</span>
+                + oper + &quot; &quot;
+<span class="fc" id="L172">                + asString(ro));</span>
+    }
+
+    @Override
+    public void throwExceptionIfNotReleased() throws IllegalStateException {
+<span class="nc" id="L177">        synchronized (references) {</span>
+<span class="nc bnc" id="L178" title="All 2 branches missed.">            if (references.isEmpty())</span>
+<span class="nc" id="L179">                return;</span>
+<span class="nc" id="L180">            IllegalStateException ise = new ClosedIllegalStateException(&quot;Retained reference closed&quot;);</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">            for (Map.Entry&lt;ReferenceOwner, StackTrace&gt; entry : references.entrySet()) {</span>
+<span class="nc" id="L182">                ReferenceOwner referenceOwner = entry.getKey();</span>
+<span class="nc" id="L183">                StackTrace reservedHere = entry.getValue();</span>
+<span class="nc" id="L184">                IllegalStateException ise2 = new IllegalStateException(&quot;Reserved by &quot; + asString(referenceOwner), reservedHere);</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">                if (referenceOwner instanceof Closeable) {</span>
+                    try {
+<span class="nc" id="L187">                        ((Closeable) referenceOwner).throwExceptionIfClosed();</span>
+<span class="nc" id="L188">                    } catch (IllegalStateException ise3) {</span>
+<span class="nc" id="L189">                        ise2.addSuppressed(ise3);</span>
+<span class="nc" id="L190">                    }</span>
+<span class="nc bnc" id="L191" title="All 2 branches missed.">                } else if (referenceOwner instanceof AbstractReferenceCounted) {</span>
+                    try {
+<span class="nc" id="L193">                        ((AbstractReferenceCounted) referenceOwner).throwExceptionIfReleased();</span>
+<span class="nc" id="L194">                    } catch (IllegalStateException ise3) {</span>
+<span class="nc" id="L195">                        ise2.addSuppressed(ise3);</span>
+<span class="nc" id="L196">                    }</span>
+                }
+<span class="nc" id="L198">                ise.addSuppressed(ise2);</span>
+<span class="nc bnc" id="L199" title="All 2 branches missed.">                if (referenceOwner instanceof AbstractCloseable) {</span>
+<span class="nc" id="L200">                    AbstractCloseable ac = (AbstractCloseable) referenceOwner;</span>
+                    try {
+<span class="nc" id="L202">                        ac.throwExceptionIfClosed();</span>
+
+<span class="nc" id="L204">                    } catch (IllegalStateException e) {</span>
+<span class="nc" id="L205">                        ise.addSuppressed(e);</span>
+<span class="nc" id="L206">                    }</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">                } else if (referenceOwner instanceof QueryCloseable) {</span>
+                    try {
+<span class="nc" id="L209">                        ((QueryCloseable) referenceOwner).throwExceptionIfClosed();</span>
+
+<span class="nc" id="L211">                    } catch (Throwable t) {</span>
+<span class="nc" id="L212">                        ise.addSuppressed(new ClosedIllegalStateException(&quot;Closed &quot; + asString(referenceOwner), t));</span>
+<span class="nc" id="L213">                    }</span>
+                }
+<span class="nc" id="L215">            }</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">            if (ise.getSuppressed().length &gt; 0)</span>
+<span class="nc" id="L217">                throw ise;</span>
+<span class="nc" id="L218">        }</span>
+<span class="nc" id="L219">    }</span>
+
+    @Override
+    public void throwExceptionIfReleased() throws IllegalStateException {
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        if (refCount() &lt;= 0)</span>
+<span class="fc" id="L224">            throw new ClosedIllegalStateException(&quot;Released&quot;, releasedHere);</span>
+<span class="fc" id="L225">    }</span>
+
+    @Override
+    public void warnAndReleaseIfNotReleased() {
+<span class="nc bnc" id="L229" title="All 2 branches missed.">        if (refCount() &gt; 0) {</span>
+<span class="nc" id="L230">            Slf4jExceptionHandler.WARN.on(getClass(), &quot;Discarded without being released by &quot; + referencesAsString(), createdHere);</span>
+<span class="nc" id="L231">            onRelease.run();</span>
+        }
+<span class="nc" id="L233">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

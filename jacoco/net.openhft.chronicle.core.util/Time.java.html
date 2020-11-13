@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Time.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.util</a> &gt; <span class="el_source">Time.java</span></div><h1>Time.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core.util;
+
+import net.openhft.chronicle.core.time.UniqueMicroTimeProvider;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
+
+/**
+ * A timer for timeouts which is resilient to pauses in the JVM, tickTime can only increase if the JVM hasn't been paused.
+ * &lt;p&gt;
+ * For this to work, currentTimeMillis (or one of the methods that calls it) must be called more frequently than
+ * every millisecond; the EventLoop implementations in chronicle-threads do this.
+ * &lt;/p&gt;
+ */
+<span class="fc" id="L33">public enum Time {</span>
+    ;
+
+    @Deprecated(/* Still widely used */)
+    public static long currentTimeMillis() {
+<span class="nc" id="L38">        return System.currentTimeMillis();</span>
+    }
+
+    @Deprecated(/* remove in x.21*/)
+    public static long tickTime() {
+<span class="nc" id="L43">        return System.currentTimeMillis();</span>
+    }
+
+    public static String uniqueId() {
+<span class="fc" id="L47">        return Long.toString(UniqueMicroTimeProvider.INSTANCE.currentTimeMicros(), 36);</span>
+    }
+
+    public static void parkNanos(long nanos) {
+<span class="nc" id="L51">        LockSupport.parkNanos(nanos);</span>
+<span class="nc" id="L52">    }</span>
+
+    /**
+     * Sleeps in such a way that any long pause of the JVM, e.g. GC, will make it wait much longer to prevent timeouts being busted.
+     *
+     * @param time     to pause for at least.
+     * @param timeUnit the time unit
+     */
+    public static void sleep(long time, TimeUnit timeUnit) {
+<span class="nc" id="L61">        int millis = (int) timeUnit.convert(time, TimeUnit.MILLISECONDS);</span>
+<span class="nc bnc" id="L62" title="All 2 branches missed.">        for (int i = 0; i &lt; millis; i++) {</span>
+<span class="nc" id="L63">            System.currentTimeMillis();</span>
+<span class="nc" id="L64">            LockSupport.parkNanos(1_000_000);</span>
+        }
+<span class="nc" id="L66">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

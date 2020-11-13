@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Memory.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core</a> &gt; <span class="el_source">Memory.java</span></div><h1>Memory.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core;
+
+import org.jetbrains.annotations.NotNull;
+
+import java.lang.reflect.Field;
+
+/**
+ * Low level memory access
+ */
+public interface Memory {
+    default long heapUsed() {
+<span class="fc" id="L30">        Runtime runtime = Runtime.getRuntime();</span>
+<span class="fc" id="L31">        return runtime.totalMemory() - runtime.freeMemory();</span>
+    }
+
+    void storeFence();
+
+    void loadFence();
+
+    void setMemory(long address, long size, byte b);
+
+    void freeMemory(long address, long size);
+
+    long allocate(long capacity) throws IllegalArgumentException, OutOfMemoryError;
+
+    long nativeMemoryUsed();
+
+    void writeByte(long address, byte i8);
+
+    void writeByte(Object object, long offset, byte b);
+
+    byte readByte(Object object, long offset);
+
+    void writeBytes(long address, byte[] b, int offset, int length);
+
+    void readBytes(long address, byte[] b, long offset, int length);
+
+    byte readByte(long address);
+
+    void writeShort(long address, short i16);
+
+    void writeShort(Object object, long offset, short i16);
+
+    short readShort(long address);
+
+    short readShort(Object object, long offset);
+
+    void writeInt(long address, int i32);
+
+    void writeInt(Object object, long offset, int i32);
+
+    void writeOrderedInt(long offset, int i32);
+
+    void writeOrderedInt(Object object, long offset, int i32);
+
+    int readInt(long address);
+
+    int readInt(Object object, long offset);
+
+    void writeLong(long address, long i64);
+
+    void writeLong(Object object, long offset, long i64);
+
+    long readLong(long address);
+
+    long readLong(Object object, long offset);
+
+    void writeFloat(long address, float f);
+
+    void writeFloat(Object object, long offset, float f);
+
+    float readFloat(long address);
+
+    float readFloat(Object object, long offset);
+
+    void writeDouble(long address, double d);
+
+    void writeDouble(Object object, long offset, double d);
+
+    double readDouble(long address);
+
+    double readDouble(Object object, long offset);
+
+    void copyMemory(byte[] bytes, int offset, long address, int length);
+
+    void copyMemory(long fromAddress, long address, long length);
+
+    void copyMemory(byte[] bytes, int offset, Object obj2, long offset2, int length);
+
+    void copyMemory(long fromAddress, Object obj2, long offset2, int length);
+
+    void writeOrderedLong(long address, long i);
+
+    void writeOrderedLong(Object object, long offset, long i);
+
+    void testAndSetInt(long address, long offset, int expected, int value) throws IllegalStateException;
+
+    void testAndSetInt(Object object, long offset, int expected, int value) throws IllegalStateException;
+
+    boolean compareAndSwapInt(long address, int expected, int value);
+
+    boolean compareAndSwapInt(Object object, long offset, int expected, int value);
+
+    boolean compareAndSwapLong(long address, long expected, long value);
+
+    boolean compareAndSwapLong(Object object, long offset, long expected, long value);
+
+    int pageSize();
+
+    byte readVolatileByte(long address);
+
+    byte readVolatileByte(Object object, long offset);
+
+    short readVolatileShort(long address);
+
+    short readVolatileShort(Object object, long offset);
+
+    int readVolatileInt(long address);
+
+    int readVolatileInt(Object object, long offset);
+
+    float readVolatileFloat(long address);
+
+    float readVolatileFloat(Object object, long offset);
+
+    long readVolatileLong(long address);
+
+    long readVolatileLong(Object object, long offset);
+
+    double readVolatileDouble(long address);
+
+    double readVolatileDouble(Object object, long offset);
+
+    void writeVolatileByte(long address, byte b);
+
+    void writeVolatileByte(Object object, long offset, byte b);
+
+    void writeVolatileShort(long address, short i16);
+
+    void writeVolatileShort(Object object, long offset, short i16);
+
+    void writeVolatileInt(long address, int i32);
+
+    void writeVolatileInt(Object object, long offset, int i32);
+
+    void writeVolatileFloat(long address, float f);
+
+    void writeVolatileFloat(Object object, long offset, float f);
+
+    void writeVolatileLong(long address, long i64);
+
+    void writeVolatileLong(Object object, long offset, long i64);
+
+    void writeVolatileDouble(long address, double d);
+
+    void writeVolatileDouble(Object object, long offset, double d);
+
+    int addInt(long address, int increment);
+
+    int addInt(Object object, long offset, int increment);
+
+    long addLong(long address, long increment);
+
+    long addLong(Object object, long offset, long increment);
+
+    @NotNull &lt;E&gt; E allocateInstance(Class&lt;? extends E&gt; clazz) throws InstantiationException;
+
+    long getFieldOffset(Field field);
+
+    /**
+     * @deprecated Redundant to {@link #writeInt(Object, long, int)}.
+     */
+    @Deprecated
+    void setInt(Object o, long offset, int value);
+
+    @NotNull &lt;T&gt; T getObject(Object o, long offset);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

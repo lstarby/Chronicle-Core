@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CoolerTester.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.cooler</a> &gt; <span class="el_source">CoolerTester.java</span></div><h1>CoolerTester.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package net.openhft.chronicle.core.cooler;
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.util.Histogram;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.Callable;
+
+import static net.openhft.chronicle.core.UnsafeMemory.UNSAFE;
+
+public class CoolerTester {
+    static Object blackhole;
+<span class="pc" id="L32">    private final List&lt;CpuCooler&gt; disturbers = new ArrayList&lt;&gt;();</span>
+<span class="pc" id="L33">    private final List&lt;Histogram&gt; histograms = new ArrayList&lt;&gt;();</span>
+<span class="pc" id="L34">    private final List&lt;String&gt; testNames = new ArrayList&lt;&gt;();</span>
+<span class="pc" id="L35">    private final List&lt;Callable&gt; tests = new ArrayList&lt;&gt;();</span>
+<span class="pc" id="L36">    private int repeat = 10;</span>
+<span class="pc" id="L37">    private int runTimeMS = 5_000;</span>
+<span class="pc" id="L38">    private int minCount = 20;</span>
+<span class="pc" id="L39">    private int maxCount = 20_000;</span>
+
+<span class="nc" id="L41">    public CoolerTester(Callable tested, CpuCooler... disturbers) {</span>
+<span class="nc" id="L42">        Collections.addAll(this.disturbers, disturbers);</span>
+<span class="nc" id="L43">        this.testNames.add(&quot;&quot;);</span>
+<span class="nc" id="L44">        this.tests.add(tested);</span>
+<span class="nc" id="L45">    }</span>
+
+<span class="fc" id="L47">    public CoolerTester(CpuCooler... disturbers) {</span>
+<span class="fc" id="L48">        Collections.addAll(this.disturbers, disturbers);</span>
+<span class="fc" id="L49">    }</span>
+
+<span class="nc" id="L51">    public CoolerTester(CpuCooler disturber, Callable... tests) {</span>
+<span class="nc" id="L52">        this.disturbers.add(disturber);</span>
+<span class="nc" id="L53">        Collections.addAll(this.tests, tests);</span>
+<span class="nc" id="L54">    }</span>
+
+    static void innerloop0(Callable tested, Histogram histogram, long start, int count, int minCount, int runTimeMS, int maxCount) throws Exception {
+        do {
+<span class="fc" id="L58">            innerLoop2(tested, histogram);</span>
+<span class="fc" id="L59">            count++;</span>
+        }
+<span class="pc bpc" id="L61" title="1 of 6 branches missed.">        while (count &lt; minCount || (System.currentTimeMillis() - start &lt;= runTimeMS &amp;&amp; count &lt; maxCount * 10));</span>
+<span class="fc" id="L62">    }</span>
+
+    static void innerloop1(Callable tested, CpuCooler disturber, Histogram histogram, long start, int count, int minCount, int runTimeMS, int maxCount) throws Exception {
+        do {
+<span class="fc" id="L66">            disturber.disturb();</span>
+<span class="fc" id="L67">            innerLoop2(tested, histogram);</span>
+<span class="fc" id="L68">            count++;</span>
+        }
+<span class="pc bpc" id="L70" title="1 of 6 branches missed.">        while (count &lt; minCount || (System.currentTimeMillis() - start &lt;= runTimeMS &amp;&amp; count &lt; maxCount));</span>
+<span class="fc" id="L71">    }</span>
+
+    private static void innerLoop2(Callable tested, Histogram histogram) throws Exception {
+<span class="fc" id="L74">        UNSAFE.fullFence();</span>
+<span class="fc" id="L75">        long start0 = System.nanoTime();</span>
+<span class="fc" id="L76">        blackhole = tested.call();</span>
+//            UNSAFE.fullFence();
+<span class="fc" id="L78">        long time0 = System.nanoTime() - start0;</span>
+<span class="fc" id="L79">        histogram.sample(time0);</span>
+<span class="fc" id="L80">    }</span>
+
+    public CoolerTester add(String name, Callable test) {
+<span class="fc" id="L83">        testNames.add(name);</span>
+<span class="fc" id="L84">        tests.add(test);</span>
+<span class="fc" id="L85">        return this;</span>
+    }
+
+    public int repeat() {
+<span class="nc" id="L89">        return repeat;</span>
+    }
+
+    public CoolerTester repeat(int repeat) {
+<span class="fc" id="L93">        this.repeat = repeat;</span>
+<span class="fc" id="L94">        return this;</span>
+    }
+
+    public int runTimeMS() {
+<span class="nc" id="L98">        return runTimeMS;</span>
+    }
+
+    public CoolerTester runTimeMS(int runTimeMS) {
+<span class="fc" id="L102">        this.runTimeMS = runTimeMS;</span>
+<span class="fc" id="L103">        return this;</span>
+    }
+
+    public int minCount() {
+<span class="nc" id="L107">        return minCount;</span>
+    }
+
+    public CoolerTester minCount(int minCount) {
+<span class="nc" id="L111">        this.minCount = minCount;</span>
+<span class="nc" id="L112">        return this;</span>
+    }
+
+    public int maxCount() {
+<span class="nc" id="L116">        return maxCount;</span>
+    }
+
+    public CoolerTester maxCount(int maxCount) {
+<span class="nc" id="L120">        this.maxCount = maxCount;</span>
+<span class="nc" id="L121">        return this;</span>
+    }
+
+    public void run() {
+        try {
+<span class="fc" id="L126">            System.out.println(&quot;---- Warmup ----&quot;);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            for (int j = 0; j &lt; tests.size(); j++) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                for (int i = 0; i &lt; disturbers.size(); i++) {</span>
+<span class="fc" id="L129">                    histograms.add(new Histogram(32, 7));</span>
+                }
+            }
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            for (int t = 0; t &lt;= repeat; t++) {</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                if (t == 1)</span>
+<span class="fc" id="L134">                    System.out.println(&quot;\n---- Real Tests ----&quot;);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                if (t == repeat)</span>
+<span class="fc" id="L136">                    System.out.println(&quot;\n---- RESULTS ----\n&quot;);</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                for (int j = 0; j &lt; tests.size(); j++) {</span>
+<span class="fc" id="L138">                    Callable tested = tests.get(j);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                    for (int i = 0; i &lt; disturbers.size(); i++) {</span>
+<span class="fc" id="L140">                        CpuCooler disturber = disturbers.get(i);</span>
+<span class="fc" id="L141">                        Histogram histogram = histograms.get(j * disturbers.size() + i);</span>
+
+<span class="fc" id="L143">                        long start = System.currentTimeMillis();</span>
+<span class="fc" id="L144">                        int count = 0;</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                        if (t &gt; 0)</span>
+<span class="fc" id="L146">                            innerloop1(tested, disturber, histogram, start, count, minCount, runTimeMS, maxCount);</span>
+                        else
+<span class="fc" id="L148">                            innerloop0(tested, histogram, start, count, minCount, runTimeMS, maxCount);</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">                        if (tests.size() &gt; 1)</span>
+<span class="nc" id="L150">                            System.out.print(testNames.get(j) + &quot; &quot;);</span>
+<span class="fc" id="L151">                        System.out.print(disturber);</span>
+<span class="fc" id="L152">                        System.out.println(&quot; - &quot; + histogram.toLongMicrosFormat());</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">                        if (t == 0)</span>
+<span class="fc" id="L154">                            histogram.reset();</span>
+                    }
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                    if (t == 0)</span>
+<span class="fc" id="L157">                        Jvm.pause(500);</span>
+                }
+            }
+<span class="nc" id="L160">        } catch (Exception e) {</span>
+<span class="nc" id="L161">            throw new RuntimeException(e);</span>
+<span class="fc" id="L162">        }</span>
+<span class="fc" id="L163">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

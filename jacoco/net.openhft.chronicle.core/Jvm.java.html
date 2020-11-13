@@ -1,0 +1,1033 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Jvm.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core</a> &gt; <span class="el_source">Jvm.java</span></div><h1>Jvm.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core;
+
+import net.openhft.chronicle.core.annotation.DontChain;
+import net.openhft.chronicle.core.announcer.Announcer;
+import net.openhft.chronicle.core.onoes.*;
+import net.openhft.chronicle.core.util.ObjectUtils;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import sun.misc.Signal;
+import sun.misc.SignalHandler;
+import sun.misc.Unsafe;
+import sun.nio.ch.DirectBuffer;
+import sun.nio.ch.Interruptible;
+
+import java.io.*;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.*;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.spi.AbstractInterruptibleChannel;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
+import static java.lang.Runtime.getRuntime;
+import static java.lang.management.ManagementFactory.getRuntimeMXBean;
+import static net.openhft.chronicle.core.OS.*;
+import static net.openhft.chronicle.core.UnsafeMemory.UNSAFE;
+
+/**
+ * Utility class to access information in the JVM.
+ */
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">public enum Jvm {</span>
+    ;
+
+    public static final String JAVA_CLASS_PATH = &quot;java.class.path&quot;;
+<span class="fc" id="L66">    private static final List&lt;String&gt; INPUT_ARGUMENTS = getRuntimeMXBean().getInputArguments();</span>
+<span class="fc" id="L67">    private static final String INPUT_ARGUMENTS2 = &quot; &quot; + String.join(&quot; &quot;, INPUT_ARGUMENTS);</span>
+<span class="fc" id="L68">    private static final int COMPILE_THRESHOLD = getCompileThreshold0();</span>
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">    private static final boolean IS_DEBUG = INPUT_ARGUMENTS2.contains(&quot;jdwp&quot;) || Jvm.getBoolean(&quot;debug&quot;);</span>
+    // e.g-verbose:gc  -XX:+UnlockCommercialFeatures -XX:+FlightRecorder -XX:StartFlightRecording=dumponexit=true,filename=myrecording.jfr,settings=profile -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints
+<span class="pc bpc" id="L71" title="2 of 4 branches missed.">    private static final boolean IS_FLIGHT_RECORDER = INPUT_ARGUMENTS2.contains(&quot; -XX:+FlightRecorder&quot;) || Jvm.getBoolean(&quot;jfr&quot;);</span>
+<span class="fc" id="L72">    private static final boolean IS_COVERAGE = INPUT_ARGUMENTS2.contains(&quot;coverage&quot;);</span>
+    private static final Supplier&lt;Long&gt; reservedMemory;
+<span class="fc" id="L74">    private static final boolean IS_64BIT = is64bit0();</span>
+<span class="fc" id="L75">    private static final int PROCESS_ID = getProcessId0();</span>
+    @NotNull
+<span class="fc" id="L77">    private static final ThreadLocalisedExceptionHandler FATAL = new ThreadLocalisedExceptionHandler(Slf4jExceptionHandler.FATAL);</span>
+    @NotNull
+<span class="fc" id="L79">    private static final ThreadLocalisedExceptionHandler WARN = new ThreadLocalisedExceptionHandler(Slf4jExceptionHandler.WARN);</span>
+    @NotNull
+<span class="fc" id="L81">    private static final ThreadLocalisedExceptionHandler PERF = new ThreadLocalisedExceptionHandler(Slf4jExceptionHandler.PERF);</span>
+    @NotNull
+<span class="fc" id="L83">    private static final ThreadLocalisedExceptionHandler DEBUG = new ThreadLocalisedExceptionHandler(Slf4jExceptionHandler.DEBUG);</span>
+    private static final int JVM_JAVA_MAJOR_VERSION;
+    private static final boolean IS_JAVA_9_PLUS;
+    private static final boolean IS_JAVA_12_PLUS;
+    private static final boolean IS_JAVA_14_PLUS;
+    private static final long MAX_DIRECT_MEMORY;
+    private static final boolean SAFEPOINT_ENABLED;
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">    private static final boolean IS_ARM = Jvm.getBoolean(&quot;jvm.isarm&quot;) ||</span>
+<span class="pc bpc" id="L91" title="2 of 4 branches missed.">            System.getProperty(&quot;os.arch&quot;, &quot;?&quot;).startsWith(&quot;arm&quot;) || System.getProperty(&quot;os.arch&quot;, &quot;?&quot;).startsWith(&quot;aarch&quot;);</span>
+<span class="fc" id="L92">    private static final Map&lt;Class, ClassMetrics&gt; CLASS_METRICS_MAP =</span>
+            new ConcurrentHashMap&lt;&gt;();
+<span class="fc" id="L94">    private static final Map&lt;Class, Integer&gt; PRIMITIVE_SIZE = new HashMap&lt;Class, Integer&gt;() {{</span>
+<span class="fc" id="L95">        put(boolean.class, 1);</span>
+<span class="fc" id="L96">        put(byte.class, 1);</span>
+<span class="fc" id="L97">        put(char.class, 2);</span>
+<span class="fc" id="L98">        put(short.class, 2);</span>
+<span class="fc" id="L99">        put(int.class, 4);</span>
+<span class="fc" id="L100">        put(float.class, 4);</span>
+<span class="fc" id="L101">        put(long.class, 8);</span>
+<span class="fc" id="L102">        put(double.class, 8);</span>
+<span class="fc" id="L103">    }};</span>
+    private static final MethodHandle setAccessible0_Method;
+    private static final MethodHandle onSpinWaitMH;
+    private static final ChainedSignalHandler signalHandlerGlobal;
+    private static final boolean RESOURCE_TRACING;
+<span class="fc" id="L108">    private static final boolean PROC_EXISTS = new File(&quot;/proc&quot;).exists();</span>
+
+    static {
+<span class="fc" id="L111">        JVM_JAVA_MAJOR_VERSION = getMajorVersion0();</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        IS_JAVA_9_PLUS = JVM_JAVA_MAJOR_VERSION &gt; 8; // IS_JAVA_9_PLUS value is used in maxDirectMemory0 method.</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        IS_JAVA_12_PLUS = JVM_JAVA_MAJOR_VERSION &gt; 11;</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        IS_JAVA_14_PLUS = JVM_JAVA_MAJOR_VERSION &gt; 13;</span>
+<span class="fc" id="L115">        MAX_DIRECT_MEMORY = maxDirectMemory0();</span>
+
+        Supplier&lt;Long&gt; reservedMemoryGetter;
+        try {
+<span class="fc" id="L119">            final Class&lt;?&gt; bitsClass = Class.forName(&quot;java.nio.Bits&quot;);</span>
+            Field f;
+            try {
+<span class="fc" id="L122">                f = bitsClass.getDeclaredField(&quot;reservedMemory&quot;);</span>
+<span class="nc" id="L123">            } catch (NoSuchFieldException e) {</span>
+<span class="nc" id="L124">                f = bitsClass.getDeclaredField(&quot;RESERVED_MEMORY&quot;);</span>
+<span class="fc" id="L125">            }</span>
+<span class="fc" id="L126">            long offset = UNSAFE.staticFieldOffset(f);</span>
+<span class="fc" id="L127">            Object base = UNSAFE.staticFieldBase(f);</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">            if (f.getType() == AtomicLong.class) {</span>
+<span class="fc" id="L129">                AtomicLong reservedMemory = (AtomicLong) UNSAFE.getObject(base, offset);</span>
+<span class="fc" id="L130">                reservedMemoryGetter = reservedMemory::get;</span>
+<span class="fc" id="L131">            } else {</span>
+<span class="nc" id="L132">                reservedMemoryGetter = () -&gt; UNSAFE.getLong(base, offset);</span>
+            }
+<span class="nc" id="L134">        } catch (Exception e) {</span>
+<span class="nc" id="L135">            System.err.println(Jvm.class.getName() + &quot;: Unable to determine the reservedMemory value, will always report 0&quot;);</span>
+<span class="nc" id="L136">            reservedMemoryGetter = () -&gt; 0L;</span>
+<span class="fc" id="L137">        }</span>
+<span class="fc" id="L138">        reservedMemory = reservedMemoryGetter;</span>
+<span class="fc" id="L139">        signalHandlerGlobal = new ChainedSignalHandler();</span>
+
+<span class="fc" id="L141">        MethodHandle onSpinWait = null;</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        if (IS_JAVA_9_PLUS) {</span>
+            try {
+<span class="nc" id="L144">                onSpinWait = MethodHandles.lookup()</span>
+<span class="nc" id="L145">                        .findStatic(Thread.class, &quot;onSpinWait&quot;, MethodType.methodType(Void.TYPE));</span>
+<span class="nc" id="L146">            } catch (Exception ignored) {</span>
+<span class="nc" id="L147">            }</span>
+        }
+<span class="fc" id="L149">        onSpinWaitMH = onSpinWait;</span>
+<span class="fc" id="L150">        setAccessible0_Method = get_setAccessible0_Method();</span>
+
+<span class="fc" id="L152">        findAndLoadSystemProperties();</span>
+
+<span class="fc" id="L154">        SAFEPOINT_ENABLED = Jvm.getBoolean(&quot;jvm.safepoint.enabled&quot;);</span>
+
+<span class="fc" id="L156">        RESOURCE_TRACING = Jvm.getBoolean(&quot;jvm.resource.tracing&quot;);</span>
+
+<span class="fc" id="L158">        Logger logger = LoggerFactory.getLogger(Jvm.class);</span>
+<span class="fc" id="L159">        logger.info(&quot;Chronicle core loaded from &quot; + Jvm.class.getProtectionDomain().getCodeSource().getLocation());</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        if (RESOURCE_TRACING)</span>
+<span class="fc" id="L161">            logger.warn(&quot;Resource tracing is turned on. If you are performance testing or running in PROD you probably don't want this&quot;);</span>
+<span class="fc" id="L162">    }</span>
+
+    private static void findAndLoadSystemProperties() {
+<span class="fc" id="L165">        String systemProperties = System.getProperty(&quot;system.properties&quot;);</span>
+<span class="fc" id="L166">        boolean wasSet = true;</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (systemProperties == null) {</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">            if (new File(&quot;system.properties&quot;).exists())</span>
+<span class="fc" id="L169">                systemProperties = &quot;system.properties&quot;;</span>
+<span class="nc bnc" id="L170" title="All 2 branches missed.">            else if (new File(&quot;../system.properties&quot;).exists())</span>
+<span class="nc" id="L171">                systemProperties = &quot;../system.properties&quot;;</span>
+            else {
+<span class="nc" id="L173">                systemProperties = &quot;system.properties&quot;;</span>
+<span class="nc" id="L174">                wasSet = false;</span>
+            }
+        }
+<span class="fc" id="L177">        loadSystemProperties(systemProperties, wasSet);</span>
+<span class="fc" id="L178">    }</span>
+
+    private static MethodHandle get_setAccessible0_Method() {
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        if (!IS_JAVA_9_PLUS) {</span>
+<span class="fc" id="L182">            return null;</span>
+        }
+<span class="nc" id="L184">        MethodType signature = MethodType.methodType(boolean.class, boolean.class);</span>
+        try {
+            // Access privateLookupIn() reflectively to support compilation with JDK 8
+<span class="nc" id="L187">            Method privateLookupIn = MethodHandles.class.getDeclaredMethod(&quot;privateLookupIn&quot;, Class.class, MethodHandles.Lookup.class);</span>
+<span class="nc" id="L188">            MethodHandles.Lookup lookup = (MethodHandles.Lookup) privateLookupIn.invoke(null, AccessibleObject.class, MethodHandles.lookup());</span>
+<span class="nc" id="L189">            return lookup.findVirtual(AccessibleObject.class, &quot;setAccessible0&quot;, signature);</span>
+<span class="nc" id="L190">        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {</span>
+<span class="nc" id="L191">            throw new ExceptionInInitializerError(e);</span>
+        }
+    }
+
+    public static void init() {
+        // force static initialisation
+<span class="nc" id="L197">    }</span>
+
+    private static void loadSystemProperties(String name, boolean wasSet) {
+        try {
+<span class="fc" id="L201">            ClassLoader classLoader = Jvm.class.getClassLoader();</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">            InputStream is0 = classLoader == null ? null : classLoader.getResourceAsStream(name);</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">            if (is0 == null) {</span>
+<span class="fc" id="L204">                File file = new File(name);</span>
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">                if (file.exists())</span>
+<span class="fc" id="L206">                    is0 = new FileInputStream(file);</span>
+            }
+<span class="fc" id="L208">            try (InputStream is = is0) {</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">                if (is == null) {</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">                    (wasSet ? Slf4jExceptionHandler.WARN : Slf4jExceptionHandler.DEBUG)</span>
+<span class="nc" id="L211">                            .on(Jvm.class, &quot;No &quot; + name + &quot; file found&quot;);</span>
+
+                } else {
+<span class="fc" id="L214">                    Properties prop = new Properties();</span>
+<span class="fc" id="L215">                    prop.load(is);</span>
+<span class="fc" id="L216">                    System.getProperties().putAll(prop);</span>
+<span class="fc" id="L217">                    Slf4jExceptionHandler.DEBUG.on(Jvm.class, &quot;Loaded &quot; + name + &quot; with &quot; + prop);</span>
+                }
+            }
+<span class="nc" id="L220">        } catch (Exception e) {</span>
+<span class="nc" id="L221">            Slf4jExceptionHandler.WARN.on(Jvm.class, &quot;Error loading &quot; + name, e);</span>
+<span class="fc" id="L222">        }</span>
+<span class="fc" id="L223">    }</span>
+
+    private static int getCompileThreshold0() {
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        for (@NotNull String inputArgument : INPUT_ARGUMENTS) {</span>
+<span class="fc" id="L227">            @NotNull String prefix = &quot;-XX:CompileThreshold=&quot;;</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">            if (inputArgument.startsWith(prefix)) {</span>
+<span class="nc" id="L229">                return Integer.parseInt(inputArgument.substring(prefix.length()));</span>
+            }
+<span class="fc" id="L231">        }</span>
+<span class="fc" id="L232">        return 10000;</span>
+    }
+
+    public static int compileThreshold() {
+<span class="nc" id="L236">        return COMPILE_THRESHOLD;</span>
+    }
+
+    public static int majorVersion() {
+<span class="fc" id="L240">        return JVM_JAVA_MAJOR_VERSION;</span>
+    }
+
+    public static boolean isJava9Plus() {
+<span class="fc" id="L244">        return IS_JAVA_9_PLUS;</span>
+    }
+
+    public static boolean isJava12Plus() {
+<span class="fc" id="L248">        return IS_JAVA_12_PLUS;</span>
+    }
+
+    public static boolean isJava14Plus() {
+<span class="fc" id="L252">        return IS_JAVA_14_PLUS;</span>
+    }
+
+    private static boolean is64bit0() {
+        String systemProp;
+<span class="fc" id="L257">        systemProp = System.getProperty(&quot;com.ibm.vm.bitmode&quot;);</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">        if (systemProp != null) {</span>
+<span class="nc" id="L259">            return &quot;64&quot;.equals(systemProp);</span>
+        }
+<span class="fc" id="L261">        systemProp = System.getProperty(&quot;sun.arch.data.model&quot;);</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">        if (systemProp != null) {</span>
+<span class="fc" id="L263">            return &quot;64&quot;.equals(systemProp);</span>
+        }
+<span class="nc" id="L265">        systemProp = System.getProperty(&quot;java.vm.version&quot;);</span>
+<span class="nc bnc" id="L266" title="All 4 branches missed.">        return systemProp != null &amp;&amp; systemProp.contains(&quot;_64&quot;);</span>
+    }
+
+    public static int getProcessId() {
+<span class="fc" id="L270">        return PROCESS_ID;</span>
+    }
+
+    private static int getProcessId0() {
+<span class="fc" id="L274">        String pid = null;</span>
+<span class="fc" id="L275">        final File self = new File(&quot;/proc/self&quot;);</span>
+        try {
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">            if (self.exists()) {</span>
+<span class="fc" id="L278">                pid = self.getCanonicalFile().getName();</span>
+            }
+<span class="nc" id="L280">        } catch (IOException ignored) {</span>
+<span class="fc" id="L281">        }</span>
+
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">        if (pid == null) {</span>
+<span class="nc" id="L284">            pid = getRuntimeMXBean().getName().split(&quot;@&quot;, 0)[0];</span>
+        }
+
+<span class="pc bpc" id="L287" title="1 of 2 branches missed.">        if (pid == null) {</span>
+<span class="nc" id="L288">            int rpid = new Random().nextInt(1 &lt;&lt; 16);</span>
+<span class="nc" id="L289">            System.err.println(Jvm.class.getName() + &quot;: Unable to determine PID, picked a random number=&quot; + rpid);</span>
+<span class="nc" id="L290">            return rpid;</span>
+        } else {
+<span class="fc" id="L292">            return Integer.parseInt(pid);</span>
+        }
+    }
+
+    /**
+     * Cast a CheckedException as an unchecked one.
+     *
+     * @param throwable to cast
+     * @param &lt;T&gt;       the type of the Throwable
+     * @return this method will never return a Throwable instance, it will just throw it.
+     * @throws T the throwable as an unchecked throwable
+     */
+    @NotNull
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public static &lt;T extends Throwable&gt; RuntimeException rethrow(Throwable throwable) throws T {
+<span class="fc" id="L307">        throw (T) throwable; // rely on vacuous cast</span>
+    }
+
+    /**
+     * Append the StackTraceElements to the StringBuilder trimming some internal methods.
+     *
+     * @param sb   to append to
+     * @param stes stack trace elements
+     */
+    public static void trimStackTrace(@NotNull StringBuilder sb, @NotNull StackTraceElement... stes) {
+<span class="nc" id="L317">        int first = trimFirst(stes);</span>
+<span class="nc" id="L318">        int last = trimLast(first, stes);</span>
+<span class="nc bnc" id="L319" title="All 2 branches missed.">        for (int i = first; i &lt;= last; i++)</span>
+<span class="nc" id="L320">            sb.append(&quot;\n\tat &quot;).append(stes[i]);</span>
+<span class="nc" id="L321">    }</span>
+
+    static int trimFirst(@NotNull StackTraceElement[] stes) {
+<span class="nc bnc" id="L324" title="All 4 branches missed.">        if (stes.length &gt; 2 &amp;&amp; stes[1].getMethodName().endsWith(&quot;afepoint&quot;))</span>
+<span class="nc" id="L325">            return 2;</span>
+<span class="nc" id="L326">        int first = 0;</span>
+<span class="nc bnc" id="L327" title="All 2 branches missed.">        for (; first &lt; stes.length; first++)</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">            if (!isInternal(stes[first].getClassName()))</span>
+<span class="nc" id="L329">                break;</span>
+<span class="nc" id="L330">        return Math.max(0, first - 2);</span>
+    }
+
+    public static int trimLast(int first, @NotNull StackTraceElement[] stes) {
+<span class="nc" id="L334">        int last = stes.length - 1;</span>
+<span class="nc bnc" id="L335" title="All 2 branches missed.">        for (; first &lt; last; last--)</span>
+<span class="nc bnc" id="L336" title="All 2 branches missed.">            if (!isInternal(stes[last].getClassName()))</span>
+<span class="nc" id="L337">                break;</span>
+<span class="nc bnc" id="L338" title="All 2 branches missed.">        if (last &lt; stes.length - 1) last++;</span>
+<span class="nc" id="L339">        return last;</span>
+    }
+
+    static boolean isInternal(@NotNull String className) {
+<span class="pc bpc" id="L343" title="2 of 6 branches missed.">        return className.startsWith(&quot;jdk.&quot;) || className.startsWith(&quot;sun.&quot;) || className.startsWith(&quot;java.&quot;);</span>
+    }
+
+    /**
+     * @return is the JVM in debug mode.
+     */
+    @SuppressWarnings(&quot;SameReturnValue&quot;)
+    public static boolean isDebug() {
+<span class="fc" id="L351">        return IS_DEBUG;</span>
+    }
+
+    /**
+     * @return is the JVM in flight recorder mode.
+     */
+    @SuppressWarnings(&quot;SameReturnValue&quot;)
+    public static boolean isFlightRecorder() {
+<span class="nc" id="L359">        return IS_FLIGHT_RECORDER;</span>
+    }
+
+    /**
+     * @return is the JVM running in code coverage
+     */
+    public static boolean isCodeCoverage() {
+<span class="fc" id="L366">        return IS_COVERAGE;</span>
+    }
+
+    /**
+     * Silently pause for milli seconds.
+     *
+     * @param millis to sleep for.
+     */
+    public static void pause(long millis) {
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">        if (millis &lt;= 0) {</span>
+<span class="nc" id="L376">            Thread.yield();</span>
+<span class="nc" id="L377">            return;</span>
+        }
+        try {
+<span class="fc" id="L380">            Thread.sleep(millis);</span>
+<span class="nc" id="L381">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L382">            Thread.currentThread().interrupt();</span>
+<span class="fc" id="L383">        }</span>
+<span class="fc" id="L384">    }</span>
+
+    /**
+     * Pause in a busy loop for a very short time.
+     */
+    public static void nanoPause() {
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">        if (onSpinWaitMH == null) {</span>
+<span class="fc" id="L391">            safepoint();</span>
+        } else {
+            try {
+<span class="nc" id="L394">                onSpinWaitMH.invokeExact();</span>
+<span class="nc" id="L395">            } catch (Throwable throwable) {</span>
+<span class="nc" id="L396">                throw new AssertionError(throwable);</span>
+<span class="nc" id="L397">            }</span>
+        }
+<span class="fc" id="L399">    }</span>
+
+    /**
+     * This method is designed to be used when the time to be waited is very small, typically under a millisecond.
+     *
+     * @param micros Time in micros
+     */
+    public static void busyWaitMicros(long micros) {
+<span class="nc" id="L407">        busyWaitUntil(System.nanoTime() + (micros * 1_000));</span>
+<span class="nc" id="L408">    }</span>
+
+    /**
+     * This method is designed to be used when the time to be waited is very small, typically under a millisecond.
+     *
+     * @param waitUntil nanosecond precision counter value to await.
+     */
+    public static void busyWaitUntil(long waitUntil) {
+<span class="nc bnc" id="L416" title="All 2 branches missed.">        while (waitUntil &gt; System.nanoTime()) {</span>
+<span class="nc" id="L417">            Jvm.nanoPause();</span>
+        }
+<span class="nc" id="L419">    }</span>
+
+    /**
+     * Get the Field for a class by name.
+     *
+     * @param clazz to get the field for
+     * @param name  of the field
+     * @return the Field.
+     */
+    public static Field getField(@NotNull Class clazz, @NotNull String name) {
+<span class="fc" id="L429">        return getField0(clazz, name, true);</span>
+    }
+
+    static Field getField0(@NotNull Class clazz, @NotNull String name, boolean error) {
+        try {
+<span class="fc" id="L434">            Field field = clazz.getDeclaredField(name);</span>
+<span class="fc" id="L435">            setAccessible(field);</span>
+<span class="fc" id="L436">            return field;</span>
+
+<span class="fc" id="L438">        } catch (NoSuchFieldException e) {</span>
+<span class="fc" id="L439">            Class superclass = clazz.getSuperclass();</span>
+<span class="pc bpc" id="L440" title="1 of 2 branches missed.">            if (superclass != null) {</span>
+<span class="fc" id="L441">                Field field = getField0(superclass, name, false);</span>
+<span class="pc bpc" id="L442" title="1 of 2 branches missed.">                if (field != null)</span>
+<span class="fc" id="L443">                    return field;</span>
+            }
+<span class="nc bnc" id="L445" title="All 2 branches missed.">            if (error)</span>
+<span class="nc" id="L446">                throw new AssertionError(e);</span>
+<span class="nc" id="L447">            return null;</span>
+        }
+    }
+
+    public static Field getFieldOrNull(@NotNull Class clazz, @NotNull String name) {
+        try {
+<span class="fc" id="L453">            return getField(clazz, name);</span>
+
+<span class="nc" id="L455">        } catch (AssertionError e) {</span>
+<span class="nc" id="L456">            return null;</span>
+        }
+    }
+
+    public static Method getMethod(@NotNull Class clazz, @NotNull String name, Class... args) {
+<span class="fc" id="L461">        return getMethod0(clazz, name, args, true);</span>
+    }
+
+    private static Method getMethod0(@NotNull Class clazz, @NotNull String name, Class[] args, boolean first) {
+        try {
+<span class="fc" id="L466">            Method method = clazz.getDeclaredMethod(name, args);</span>
+<span class="pc bpc" id="L467" title="1 of 2 branches missed.">            if (!Modifier.isPublic(method.getModifiers()) ||</span>
+<span class="nc bnc" id="L468" title="All 2 branches missed.">                    !Modifier.isPublic(method.getDeclaringClass().getModifiers()))</span>
+<span class="fc" id="L469">                setAccessible(method);</span>
+<span class="fc" id="L470">            return method;</span>
+
+<span class="nc" id="L472">        } catch (NoSuchMethodException e) {</span>
+<span class="nc" id="L473">            Class superclass = clazz.getSuperclass();</span>
+<span class="nc bnc" id="L474" title="All 2 branches missed.">            if (superclass != null)</span>
+                try {
+<span class="nc" id="L476">                    Method m = getMethod0(superclass, name, args, false);</span>
+<span class="nc bnc" id="L477" title="All 2 branches missed.">                    if (m != null)</span>
+<span class="nc" id="L478">                        return m;</span>
+<span class="nc" id="L479">                } catch (Exception ignored) {</span>
+<span class="nc" id="L480">                }</span>
+<span class="nc bnc" id="L481" title="All 2 branches missed.">            if (first)</span>
+<span class="nc" id="L482">                throw new AssertionError(e);</span>
+<span class="nc" id="L483">            return null;</span>
+        }
+    }
+
+    public static void setAccessible(AccessibleObject h) {
+<span class="pc bpc" id="L488" title="1 of 2 branches missed.">        if (IS_JAVA_9_PLUS)</span>
+            try {
+<span class="nc" id="L490">                boolean newFlag = (boolean) setAccessible0_Method.invokeExact(h, true);</span>
+<span class="nc bnc" id="L491" title="All 4 branches missed.">                assert newFlag;</span>
+<span class="nc" id="L492">            } catch (Throwable throwable) {</span>
+<span class="nc" id="L493">                throw Jvm.rethrow(throwable);</span>
+<span class="nc" id="L494">            }</span>
+        else
+<span class="fc" id="L496">            h.setAccessible(true);</span>
+<span class="fc" id="L497">    }</span>
+
+    public static &lt;V&gt; V getValue(@NotNull Object obj, @NotNull String name) {
+<span class="fc" id="L500">        Class&lt;?&gt; aClass = obj.getClass();</span>
+<span class="fc bfc" id="L501" title="All 2 branches covered.">        for (String n : name.split(&quot;/&quot;)) {</span>
+<span class="fc" id="L502">            Field f = getField(aClass, n);</span>
+            try {
+<span class="fc" id="L504">                obj = f.get(obj);</span>
+<span class="pc bpc" id="L505" title="1 of 2 branches missed.">                if (obj == null)</span>
+<span class="nc" id="L506">                    return null;</span>
+<span class="nc" id="L507">            } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L508">                throw new AssertionError(e);</span>
+<span class="fc" id="L509">            }</span>
+<span class="fc" id="L510">            aClass = obj.getClass();</span>
+        }
+<span class="fc" id="L512">        return (V) obj;</span>
+    }
+
+    /**
+     * Log the stack trace of the thread holding a lock.
+     *
+     * @param lock to log
+     * @return the lock.toString plus a stack trace.
+     */
+    public static String lockWithStack(@NotNull ReentrantLock lock) {
+<span class="nc" id="L522">        @Nullable Thread t = getValue(lock, &quot;sync/exclusiveOwnerThread&quot;);</span>
+<span class="nc bnc" id="L523" title="All 2 branches missed.">        if (t == null) {</span>
+<span class="nc" id="L524">            return lock.toString();</span>
+        }
+<span class="nc" id="L526">        @NotNull StringBuilder ret = new StringBuilder();</span>
+<span class="nc" id="L527">        ret.append(lock).append(&quot; running at&quot;);</span>
+<span class="nc" id="L528">        trimStackTrace(ret, t.getStackTrace());</span>
+<span class="nc" id="L529">        return ret.toString();</span>
+    }
+
+    /**
+     * @return The size of memory used by direct ByteBuffers i.e. ByteBuffer.allocateDirect()
+     */
+    public static long usedDirectMemory() {
+<span class="fc" id="L536">        return reservedMemory.get();</span>
+    }
+
+    /**
+     * @return The size of memory used by UnsafeMemory.allocate()
+     */
+    public static long usedNativeMemory() {
+<span class="nc" id="L543">        return UnsafeMemory.INSTANCE.nativeMemoryUsed();</span>
+    }
+
+    public static long maxDirectMemory() {
+<span class="fc" id="L547">        return MAX_DIRECT_MEMORY;</span>
+    }
+
+    public static boolean is64bit() {
+<span class="nc" id="L551">        return IS_64BIT;</span>
+    }
+
+    public static void resetExceptionHandlers() {
+<span class="fc" id="L555">        FATAL.defaultHandler(Slf4jExceptionHandler.FATAL).resetThreadLocalHandler();</span>
+<span class="fc" id="L556">        WARN.defaultHandler(Slf4jExceptionHandler.WARN).resetThreadLocalHandler();</span>
+<span class="fc" id="L557">        DEBUG.defaultHandler(Slf4jExceptionHandler.DEBUG).resetThreadLocalHandler();</span>
+<span class="fc" id="L558">        PERF.defaultHandler(Slf4jExceptionHandler.DEBUG).resetThreadLocalHandler();</span>
+<span class="fc" id="L559">    }</span>
+
+    public static void disableDebugHandler() {
+<span class="nc" id="L562">        DEBUG.defaultHandler(null).resetThreadLocalHandler();</span>
+<span class="nc" id="L563">    }</span>
+
+    @NotNull
+    public static Map&lt;ExceptionKey, Integer&gt; recordExceptions() {
+<span class="fc" id="L567">        return recordExceptions(true);</span>
+    }
+
+    @NotNull
+    public static Map&lt;ExceptionKey, Integer&gt; recordExceptions(boolean debug) {
+<span class="fc" id="L572">        return recordExceptions(debug, false);</span>
+    }
+
+    @NotNull
+    public static Map&lt;ExceptionKey, Integer&gt; recordExceptions(boolean debug, boolean exceptionsOnly) {
+<span class="fc" id="L577">        return recordExceptions(debug, exceptionsOnly, true);</span>
+    }
+
+    @NotNull
+    public static Map&lt;ExceptionKey, Integer&gt; recordExceptions(boolean debug, boolean exceptionsOnly,
+                                                              boolean logToSlf4j) {
+<span class="fc" id="L583">        @NotNull Map&lt;ExceptionKey, Integer&gt; map = Collections.synchronizedMap(new LinkedHashMap&lt;&gt;());</span>
+<span class="fc" id="L584">        FATAL.defaultHandler(recordingExceptionHandler(LogLevel.FATAL, map, exceptionsOnly, logToSlf4j));</span>
+<span class="fc" id="L585">        WARN.defaultHandler(recordingExceptionHandler(LogLevel.WARN, map, exceptionsOnly, logToSlf4j));</span>
+<span class="pc bpc" id="L586" title="3 of 4 branches missed.">        DEBUG.defaultHandler(debug ? recordingExceptionHandler(LogLevel.DEBUG, map, exceptionsOnly, logToSlf4j) : logToSlf4j ? Slf4jExceptionHandler.DEBUG : NullExceptionHandler.NOTHING);</span>
+<span class="fc" id="L587">        return map;</span>
+    }
+
+    private static ExceptionHandler recordingExceptionHandler(LogLevel logLevel, Map&lt;ExceptionKey, Integer&gt; map,
+                                                              boolean exceptionsOnly, boolean logToSlf4j) {
+<span class="fc" id="L592">        ExceptionHandler eh = new RecordingExceptionHandler(logLevel, map, exceptionsOnly);</span>
+<span class="pc bpc" id="L593" title="1 of 2 branches missed.">        if (logToSlf4j)</span>
+<span class="fc" id="L594">            eh = new ChainedExceptionHandler(eh, Slf4jExceptionHandler.valueOf(logLevel));</span>
+<span class="fc" id="L595">        return eh;</span>
+    }
+
+    public static boolean hasException(@NotNull Map&lt;ExceptionKey, Integer&gt; exceptions) {
+
+<span class="nc" id="L600">        Iterator&lt;ExceptionKey&gt; iterator = exceptions.keySet().iterator();</span>
+<span class="nc bnc" id="L601" title="All 2 branches missed.">        while (iterator.hasNext()) {</span>
+<span class="nc" id="L602">            ExceptionKey k = iterator.next();</span>
+<span class="nc bnc" id="L603" title="All 6 branches missed.">            if ((k.throwable != null &amp;&amp; !(k.throwable instanceof StackTrace)) &amp;&amp; k.level != LogLevel.DEBUG)</span>
+<span class="nc" id="L604">                return true;</span>
+<span class="nc" id="L605">        }</span>
+
+<span class="nc" id="L607">        return false;</span>
+    }
+
+    @Deprecated
+    public static void setExceptionsHandlers(@Nullable ExceptionHandler fatal,
+                                             @Nullable ExceptionHandler warn,
+                                             @Nullable ExceptionHandler debug) {
+<span class="nc" id="L614">        setExceptionHandlers(fatal, warn, debug);</span>
+<span class="nc" id="L615">    }</span>
+
+    public static void setExceptionHandlers(@Nullable ExceptionHandler fatal,
+                                            @Nullable ExceptionHandler warn,
+                                            @Nullable ExceptionHandler debug) {
+
+<span class="nc" id="L621">        FATAL.defaultHandler(fatal);</span>
+<span class="nc" id="L622">        WARN.defaultHandler(warn);</span>
+<span class="nc" id="L623">        DEBUG.defaultHandler(debug);</span>
+
+<span class="nc" id="L625">    }</span>
+
+    public static void setExceptionHandlers(@Nullable ExceptionHandler fatal,
+                                            @Nullable ExceptionHandler warn,
+                                            @Nullable ExceptionHandler debug,
+                                            @Nullable ExceptionHandler perf) {
+<span class="nc" id="L631">        setExceptionHandlers(fatal, warn, debug);</span>
+<span class="nc" id="L632">        PERF.defaultHandler(perf);</span>
+<span class="nc" id="L633">    }</span>
+
+    public static void setThreadLocalExceptionHandlers(@Nullable ExceptionHandler fatal,
+                                                       @Nullable ExceptionHandler warn,
+                                                       @Nullable ExceptionHandler debug) {
+
+<span class="nc" id="L639">        FATAL.threadLocalHandler(fatal);</span>
+<span class="nc" id="L640">        WARN.threadLocalHandler(warn);</span>
+<span class="nc" id="L641">        DEBUG.threadLocalHandler(debug);</span>
+<span class="nc" id="L642">    }</span>
+
+    public static void setThreadLocalExceptionHandlers(@Nullable ExceptionHandler fatal,
+                                                       @Nullable ExceptionHandler warn,
+                                                       @Nullable ExceptionHandler debug,
+                                                       @Nullable ExceptionHandler perf) {
+
+<span class="nc" id="L649">        setThreadLocalExceptionHandlers(fatal, warn, debug);</span>
+<span class="nc" id="L650">        PERF.threadLocalHandler(debug);</span>
+<span class="nc" id="L651">    }</span>
+
+    @NotNull
+    public static ExceptionHandler fatal() {
+<span class="nc" id="L655">        return FATAL;</span>
+    }
+
+    @NotNull
+    public static ExceptionHandler warn() {
+<span class="fc" id="L660">        return WARN;</span>
+    }
+
+    @NotNull
+    public static ExceptionHandler perf() {
+<span class="nc" id="L665">        return PERF;</span>
+    }
+
+    @NotNull
+    public static ExceptionHandler debug() {
+<span class="fc" id="L670">        return DEBUG;</span>
+    }
+
+    public static void dumpException(@NotNull Map&lt;ExceptionKey, Integer&gt; exceptions) {
+<span class="nc" id="L674">        System.out.println(&quot;exceptions: &quot; + exceptions.size());</span>
+<span class="nc bnc" id="L675" title="All 2 branches missed.">        for (@NotNull Map.Entry&lt;ExceptionKey, Integer&gt; entry : exceptions.entrySet()) {</span>
+<span class="nc" id="L676">            ExceptionKey key = entry.getKey();</span>
+<span class="nc" id="L677">            System.err.println(key.level + &quot; &quot; + key.clazz.getSimpleName() + &quot; &quot; + key.message);</span>
+<span class="nc bnc" id="L678" title="All 2 branches missed.">            if (key.throwable != null)</span>
+<span class="nc" id="L679">                key.throwable.printStackTrace();</span>
+<span class="nc" id="L680">            Integer value = entry.getValue();</span>
+<span class="nc bnc" id="L681" title="All 2 branches missed.">            if (value &gt; 1)</span>
+<span class="nc" id="L682">                System.err.println(&quot;Repeated &quot; + value + &quot; times&quot;);</span>
+<span class="nc" id="L683">        }</span>
+<span class="nc" id="L684">        resetExceptionHandlers();</span>
+<span class="nc" id="L685">    }</span>
+
+    public static boolean isDebugEnabled(Class aClass) {
+<span class="pc bpc" id="L688" title="2 of 4 branches missed.">        return DEBUG.isEnabled(aClass) || isDebug();</span>
+    }
+
+    private static long maxDirectMemory0() {
+        try {
+            Class&lt;?&gt; clz;
+
+<span class="pc bpc" id="L695" title="1 of 2 branches missed.">            if (IS_JAVA_9_PLUS) {</span>
+<span class="nc" id="L696">                clz = Class.forName(&quot;jdk.internal.misc.VM&quot;);</span>
+            } else {
+<span class="fc" id="L698">                clz = Class.forName(&quot;sun.misc.VM&quot;);</span>
+            }
+
+<span class="fc" id="L701">            final Field f = clz.getDeclaredField(&quot;directMemory&quot;);</span>
+<span class="fc" id="L702">            long offset = UNSAFE.staticFieldOffset(f);</span>
+<span class="fc" id="L703">            Object base = UNSAFE.staticFieldBase(f);</span>
+
+<span class="fc" id="L705">            return UNSAFE.getLong(base, offset);</span>
+<span class="nc" id="L706">        } catch (Exception e) {</span>
+            // ignore
+        }
+<span class="nc" id="L709">        System.err.println(Jvm.class.getName() + &quot;: Unable to determine max direct memory&quot;);</span>
+<span class="nc" id="L710">        return 0L;</span>
+    }
+
+    private static int getMajorVersion0() {
+        try {
+<span class="nc" id="L715">            final Method method = Runtime.class.getDeclaredMethod(&quot;version&quot;);</span>
+<span class="nc bnc" id="L716" title="All 2 branches missed.">            if (method != null) {</span>
+<span class="nc" id="L717">                final Object version = method.invoke(getRuntime());</span>
+<span class="nc" id="L718">                final Class&lt;?&gt; clz = Class.forName(&quot;java.lang.Runtime$Version&quot;);</span>
+<span class="nc" id="L719">                return (Integer) clz.getDeclaredMethod(&quot;major&quot;).invoke(version);</span>
+            }
+<span class="fc" id="L721">        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | ClassNotFoundException e) {</span>
+            // ignore and fall back to pre-jdk9
+<span class="nc" id="L723">        }</span>
+<span class="fc" id="L724">        return Integer.parseInt(Runtime.class.getPackage().getSpecificationVersion().split(&quot;\\.&quot;)[1]);</span>
+    }
+
+    /**
+     * Helper method for setting the default signals. Every signal handler you register with this method will be called.
+     *
+     * @param signalHandler to call on a signal
+     */
+    public static void signalHandler(SignalHandler signalHandler) {
+<span class="pc bpc" id="L733" title="1 of 2 branches missed.">        if (signalHandlerGlobal.handlers.isEmpty()) {</span>
+<span class="pc bpc" id="L734" title="1 of 2 branches missed.">            if (!OS.isWindows()) // not available on windows.</span>
+<span class="fc" id="L735">                addSignalHandler(&quot;HUP&quot;, signalHandlerGlobal);</span>
+<span class="fc" id="L736">            addSignalHandler(&quot;INT&quot;, signalHandlerGlobal);</span>
+<span class="fc" id="L737">            addSignalHandler(&quot;TERM&quot;, signalHandlerGlobal);</span>
+        }
+<span class="fc" id="L739">        SignalHandler signalHandler2 = signal -&gt; {</span>
+<span class="nc" id="L740">            Jvm.warn().on(signalHandler.getClass(), &quot;Signal &quot; + signal.getName() + &quot; triggered&quot;);</span>
+<span class="nc" id="L741">            signalHandler.handle(signal);</span>
+<span class="nc" id="L742">        };</span>
+<span class="fc" id="L743">        signalHandlerGlobal.handlers.add(signalHandler2);</span>
+<span class="fc" id="L744">    }</span>
+
+    private static void addSignalHandler(String sig, SignalHandler signalHandler) {
+        try {
+<span class="fc" id="L748">            Signal.handle(new Signal(sig), signalHandler);</span>
+
+<span class="nc" id="L750">        } catch (IllegalArgumentException e) {</span>
+            // When -Xrs is specified the user is responsible for
+            // ensuring that shutdown hooks are run by calling
+            // System.exit()
+<span class="nc" id="L754">            Jvm.warn().on(signalHandler.getClass(), &quot;Unable add a signal handler&quot;, e);</span>
+<span class="fc" id="L755">        }</span>
+<span class="fc" id="L756">    }</span>
+
+    public static void safepoint() {
+<span class="pc bpc" id="L759" title="1 of 2 branches missed.">        if (SAFEPOINT_ENABLED)</span>
+<span class="pc bpc" id="L760" title="1 of 2 branches missed.">            if (IS_JAVA_9_PLUS)</span>
+<span class="nc" id="L761">                Safepoint.force(); // 1 ns on Java 11</span>
+            else
+<span class="fc" id="L763">                Compiler.enable(); // 5 ns on Java 8</span>
+<span class="fc" id="L764">    }</span>
+
+    @Deprecated
+    public static void optionalSafepoint() {
+<span class="nc" id="L768">        safepoint();</span>
+<span class="nc" id="L769">    }</span>
+
+    public static boolean areOptionalSafepointsEnabled() {
+<span class="nc" id="L772">        return SAFEPOINT_ENABLED;</span>
+    }
+
+    public static boolean stackTraceEndsWith(String endsWith, int n) {
+<span class="nc" id="L776">        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();</span>
+<span class="nc bnc" id="L777" title="All 2 branches missed.">        for (int i = n + 2; i &lt; stackTrace.length; i++)</span>
+<span class="nc bnc" id="L778" title="All 2 branches missed.">            if (stackTrace[i].getClassName().endsWith(endsWith))</span>
+<span class="nc" id="L779">                return true;</span>
+<span class="nc" id="L780">        return false;</span>
+    }
+
+    public static boolean isArm() {
+<span class="fc" id="L784">        return IS_ARM;</span>
+    }
+
+    public static ClassMetrics classMetrics(Class c) throws IllegalArgumentException {
+<span class="fc" id="L788">        return CLASS_METRICS_MAP.computeIfAbsent(c, Jvm::getClassMetrics);</span>
+    }
+
+    private static ClassMetrics getClassMetrics(Class c) {
+<span class="fc" id="L792">        Class superclass = c.getSuperclass();</span>
+<span class="fc" id="L793">        int start = Integer.MAX_VALUE, end = 0;</span>
+<span class="fc bfc" id="L794" title="All 2 branches covered.">        for (Field f : c.getDeclaredFields()) {</span>
+<span class="fc bfc" id="L795" title="All 2 branches covered.">            if ((f.getModifiers() &amp; (Modifier.STATIC | Modifier.TRANSIENT)) != 0)</span>
+<span class="fc" id="L796">                continue;</span>
+<span class="fc bfc" id="L797" title="All 2 branches covered.">            if (!f.getType().isPrimitive())</span>
+<span class="fc" id="L798">                continue;</span>
+<span class="fc" id="L799">            int start0 = Math.toIntExact(UnsafeMemory.UNSAFE.objectFieldOffset(f));</span>
+<span class="fc" id="L800">            int size = PRIMITIVE_SIZE.get(f.getType());</span>
+<span class="fc" id="L801">            start = Math.min(start0, start);</span>
+<span class="fc" id="L802">            end = Math.max(start0 + size, end);</span>
+        }
+<span class="pc bpc" id="L804" title="1 of 4 branches missed.">        if (superclass != null &amp;&amp; superclass != Object.class) {</span>
+<span class="fc" id="L805">            ClassMetrics cm0 = getClassMetrics(superclass);</span>
+<span class="fc" id="L806">            start = Math.min(cm0.offset(), start);</span>
+<span class="fc" id="L807">            end = Math.max(cm0.offset() + cm0.length(), end);</span>
+<span class="fc" id="L808">            validateClassMetrics(superclass, start, end);</span>
+        }
+
+<span class="fc" id="L811">        validateClassMetrics(c, start, end);</span>
+
+<span class="fc" id="L813">        return new ClassMetrics(start, end - start);</span>
+    }
+
+    private static void validateClassMetrics(Class c, int start, int end) {
+<span class="fc bfc" id="L817" title="All 2 branches covered.">        for (Field f : c.getDeclaredFields()) {</span>
+<span class="fc bfc" id="L818" title="All 2 branches covered.">            if ((f.getModifiers() &amp; Modifier.STATIC) != 0)</span>
+<span class="fc" id="L819">                continue;</span>
+<span class="fc bfc" id="L820" title="All 2 branches covered.">            if (f.getType().isPrimitive())</span>
+<span class="fc" id="L821">                continue;</span>
+<span class="fc" id="L822">            int start0 = Math.toIntExact(UnsafeMemory.UNSAFE.objectFieldOffset(f));</span>
+<span class="pc bpc" id="L823" title="1 of 4 branches missed.">            if (start &lt;= start0 &amp;&amp; start0 &lt; end) {</span>
+<span class="fc" id="L824">                throw new IllegalArgumentException(c + &quot; is not suitable for raw copies due to &quot; + f);</span>
+            }
+        }
+<span class="fc" id="L827">    }</span>
+
+    public static String userHome() {
+<span class="nc" id="L830">        return System.getProperty(&quot;user.home&quot;, &quot;.&quot;);</span>
+    }
+
+    public static boolean dontChain(Class tClass) {
+<span class="pc bpc" id="L834" title="2 of 4 branches missed.">        return tClass.getAnnotation(DontChain.class) != null || tClass.getName().startsWith(&quot;java&quot;);</span>
+    }
+
+    public static boolean isResourceTracing() {
+<span class="fc" id="L838">        return RESOURCE_TRACING;</span>
+    }
+
+    /**
+     * A more permissive boolean System property flag.
+     * &lt;code&gt;-Dflag&lt;/code &lt;code&gt;-Dflag=true&lt;/code&gt; &lt;code&gt;-Dflag=yes&lt;/code&gt;
+     * are all accepted
+     *
+     * @param property name to lookup
+     * @return if true or set
+     */
+    public static boolean getBoolean(String property) {
+<span class="fc" id="L850">        return getBoolean(property, false);</span>
+    }
+
+    /**
+     * A more permissive boolean System property flag.
+     * &lt;code&gt;-Dflag&lt;/code&gt; &lt;code&gt;-Dflag=true&lt;/code&gt; &lt;code&gt;-Dflag=yes&lt;/code&gt;
+     * are all accepted
+     *
+     * @param property     name to lookup
+     * @param defaultValue value to be used if unknown
+     * @return if true or set
+     */
+    public static boolean getBoolean(String property, boolean defaultValue) {
+<span class="fc" id="L863">        String value = System.getProperty(property);</span>
+<span class="fc bfc" id="L864" title="All 2 branches covered.">        if (value == null)</span>
+<span class="fc" id="L865">            return defaultValue;</span>
+<span class="pc bpc" id="L866" title="1 of 2 branches missed.">        if (value.isEmpty())</span>
+<span class="nc" id="L867">            return true;</span>
+<span class="fc" id="L868">        String trim = value.trim();</span>
+<span class="pc bpc" id="L869" title="1 of 2 branches missed.">        return defaultValue</span>
+<span class="pc bnc" id="L870" title="All 2 branches missed.">                ? !ObjectUtils.isFalse(trim)</span>
+<span class="fc" id="L871">                : ObjectUtils.isTrue(trim);</span>
+    }
+
+    public static long address(ByteBuffer bb) {
+<span class="fc" id="L875">        return ((DirectBuffer) bb).address();</span>
+    }
+
+    public static int arrayByteBaseOffset() {
+<span class="fc" id="L879">        return Unsafe.ARRAY_BYTE_BASE_OFFSET;</span>
+    }
+
+    public static void doNotCloseOnInterrupt(Class clazz, FileChannel fc) {
+<span class="pc bpc" id="L883" title="1 of 2 branches missed.">        if (Jvm.isJava9Plus())</span>
+<span class="nc" id="L884">            doNotCloseOnInterrupt9(clazz, fc);</span>
+        else
+<span class="fc" id="L886">            doNotCloseOnInterrupt8(clazz, fc);</span>
+<span class="fc" id="L887">    }</span>
+
+    private static void doNotCloseOnInterrupt8(Class clazz, FileChannel fc) {
+        try {
+<span class="fc" id="L891">            final Field field = AbstractInterruptibleChannel.class</span>
+<span class="fc" id="L892">                    .getDeclaredField(&quot;interruptor&quot;);</span>
+<span class="fc" id="L893">            Jvm.setAccessible(field);</span>
+<span class="fc" id="L894">            field.set(fc, (Interruptible) thread</span>
+<span class="nc" id="L895">                    -&gt; System.err.println(clazz.getName() + &quot; - &quot; + fc + &quot; not closed on interrupt&quot;));</span>
+<span class="nc" id="L896">        } catch (Throwable e) {</span>
+<span class="nc" id="L897">            Jvm.warn().on(clazz, &quot;Couldn't disable close on interrupt&quot;, e);</span>
+<span class="fc" id="L898">        }</span>
+<span class="fc" id="L899">    }</span>
+
+    // based on a solution by https://stackoverflow.com/users/9199167/max-vollmer
+    // https://stackoverflow.com/a/52262779/57695
+    private static void doNotCloseOnInterrupt9(Class clazz, final FileChannel fc) {
+        try {
+<span class="nc" id="L905">            final Field field = AbstractInterruptibleChannel.class.getDeclaredField(&quot;interruptor&quot;);</span>
+<span class="nc" id="L906">            final Class&lt;?&gt; interruptibleClass = field.getType();</span>
+<span class="nc" id="L907">            Jvm.setAccessible(field);</span>
+<span class="nc" id="L908">            field.set(fc, Proxy.newProxyInstance(</span>
+<span class="nc" id="L909">                    interruptibleClass.getClassLoader(),</span>
+                    new Class[]{interruptibleClass},
+                    (p, m, a) -&gt; {
+<span class="nc" id="L912">                        System.err.println(clazz.getName() + &quot; - &quot; + fc + &quot; not closed on interrupt&quot;);</span>
+<span class="nc" id="L913">                        return null;</span>
+                    }));
+<span class="nc" id="L915">        } catch (Throwable e) {</span>
+<span class="nc" id="L916">            Jvm.warn().on(clazz, &quot;Couldn't disable close on interrupt&quot;, e);</span>
+<span class="nc" id="L917">        }</span>
+<span class="nc" id="L918">    }</span>
+
+    /**
+     * Makes sure all the jars etc in the current class loader have been added to the class path.
+     *
+     * @param clazz to use as a template.
+     */
+    public static void addToClassPath(Class clazz) {
+<span class="fc" id="L926">        ClassLoader cl = clazz.getClassLoader();</span>
+<span class="pc bpc" id="L927" title="1 of 2 branches missed.">        if (!(cl instanceof URLClassLoader))</span>
+<span class="nc" id="L928">            return;</span>
+<span class="fc" id="L929">        String property = System.getProperty(JAVA_CLASS_PATH);</span>
+<span class="fc" id="L930">        Set&lt;String&gt; jcp = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L931">        Collections.addAll(jcp, property.split(File.pathSeparator));</span>
+<span class="fc" id="L932">        jcp.addAll(jcp.stream()</span>
+<span class="fc" id="L933">                .map(f -&gt; new File(f).getAbsolutePath())</span>
+<span class="fc" id="L934">                .collect(Collectors.toList()));</span>
+
+<span class="fc" id="L936">        URLClassLoader ucl = (URLClassLoader) cl;</span>
+<span class="fc" id="L937">        StringBuilder classpath = new StringBuilder(property);</span>
+<span class="fc bfc" id="L938" title="All 2 branches covered.">        for (URL url : ucl.getURLs()) {</span>
+            try {
+<span class="fc" id="L940">                String path = Paths.get(url.toURI()).toString();</span>
+<span class="pc bpc" id="L941" title="1 of 2 branches missed.">                if (!jcp.contains(path)) {</span>
+<span class="pc bpc" id="L942" title="1 of 2 branches missed.">                    if (isDebugEnabled(Jvm.class))</span>
+<span class="nc" id="L943">                        debug().on(Jvm.class, &quot;Adding &quot; + path + &quot; to the classpath&quot;);</span>
+<span class="fc" id="L944">                    classpath.append(File.pathSeparator).append(path);</span>
+                }
+<span class="nc" id="L946">            } catch (Throwable e) {</span>
+<span class="nc" id="L947">                debug().on(Jvm.class, &quot;Could not add URL &quot; + url + &quot; to classpath&quot;);</span>
+<span class="fc" id="L948">            }</span>
+        }
+<span class="fc" id="L950">        System.setProperty(JAVA_CLASS_PATH, classpath.toString());</span>
+<span class="fc" id="L951">    }</span>
+
+    public static double getDouble(String property, double defaultValue) {
+<span class="fc" id="L954">        String value = System.getProperty(property);</span>
+<span class="pc bpc" id="L955" title="1 of 2 branches missed.">        if (value != null)</span>
+            try {
+<span class="nc" id="L957">                return Double.parseDouble(value);</span>
+<span class="nc" id="L958">            } catch (NumberFormatException e) {</span>
+<span class="nc" id="L959">                Jvm.debug().on(Jvm.class, &quot;Unable to parse property &quot; + property + &quot; as a double &quot; + e);</span>
+            }
+<span class="fc" id="L961">        return defaultValue;</span>
+    }
+
+    /**
+     * checks if a process is still alive
+     *
+     * @param pid the pid of the process you wish to check
+     * @return true if the process is still alive
+     */
+    public static boolean isProcessAlive(long pid) {
+<span class="pc bpc" id="L971" title="1 of 2 branches missed.">        if (isWindows()) {</span>
+<span class="nc" id="L972">            String command = &quot;cmd /c tasklist /FI \&quot;PID eq &quot; + pid + &quot;\&quot;&quot;;</span>
+<span class="nc" id="L973">            return isProcessAlive0(pid, command);</span>
+        }
+<span class="pc bpc" id="L975" title="2 of 4 branches missed.">        if (isLinux() &amp;&amp; PROC_EXISTS) {</span>
+<span class="fc" id="L976">            return new File(&quot;/proc/&quot; + pid).exists();</span>
+        }
+<span class="nc bnc" id="L978" title="All 4 branches missed.">        if (isMacOSX() || isLinux()) {</span>
+<span class="nc" id="L979">            String command = &quot;ps -p &quot; + pid;</span>
+<span class="nc" id="L980">            return isProcessAlive0(pid, command);</span>
+        }
+
+<span class="nc" id="L983">        throw new UnsupportedOperationException(&quot;Not supported on this OS&quot;);</span>
+    }
+
+    private static boolean isProcessAlive0(long pid, String command) {
+
+        try {
+<span class="nc" id="L989">            InputStreamReader isReader = new InputStreamReader(</span>
+<span class="nc" id="L990">                    getRuntime().exec(command).getInputStream());</span>
+
+<span class="nc" id="L992">            BufferedReader bReader = new BufferedReader(isReader);</span>
+            String strLine;
+<span class="nc bnc" id="L994" title="All 2 branches missed.">            while ((strLine = bReader.readLine()) != null) {</span>
+<span class="nc bnc" id="L995" title="All 4 branches missed.">                if (strLine.contains(&quot; &quot; + pid + &quot; &quot;) || strLine.startsWith(pid + &quot; &quot;)) {</span>
+<span class="nc" id="L996">                    return true;</span>
+                }
+            }
+
+<span class="nc" id="L1000">            return false;</span>
+<span class="nc" id="L1001">        } catch (Exception ex) {</span>
+<span class="nc" id="L1002">            return true;</span>
+        }
+    }
+
+    // from https://stackoverflow.com/questions/62550828/is-there-a-lightweight-method-which-adds-a-safepoint-in-java-9
+<span class="nc" id="L1007">    static class Safepoint {</span>
+        // must be volatile
+<span class="nc" id="L1009">        private static volatile int one = 1;</span>
+
+        public static void force() {
+            // trick only works from Java 9+
+<span class="nc bnc" id="L1013" title="All 2 branches missed.">            for (int i = 0; i &lt; one; i++) ;</span>
+<span class="nc" id="L1014">        }</span>
+    }
+
+<span class="fc" id="L1017">    static class ChainedSignalHandler implements SignalHandler {</span>
+<span class="fc" id="L1018">        final List&lt;SignalHandler&gt; handlers = new CopyOnWriteArrayList&lt;&gt;();</span>
+
+        @Override
+        public void handle(Signal signal) {
+<span class="nc bnc" id="L1022" title="All 2 branches missed.">            for (SignalHandler handler : handlers) {</span>
+                try {
+<span class="nc bnc" id="L1024" title="All 2 branches missed.">                    if (handler != null)</span>
+<span class="nc" id="L1025">                        handler.handle(signal);</span>
+<span class="nc" id="L1026">                } catch (Throwable t) {</span>
+<span class="nc" id="L1027">                    Jvm.warn().on(this.getClass(), &quot;Problem handling signal&quot;, t);</span>
+<span class="nc" id="L1028">                }</span>
+<span class="nc" id="L1029">            }</span>
+<span class="nc" id="L1030">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ByteBuffers.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.util</a> &gt; <span class="el_source">ByteBuffers.java</span></div><h1>ByteBuffers.java</h1><pre class="source lang-java linenums">package net.openhft.chronicle.core.util;
+
+import net.openhft.chronicle.core.Jvm;
+
+import java.lang.reflect.Field;
+import java.nio.ByteBuffer;
+
+<span class="nc" id="L8">public enum ByteBuffers {</span>
+    ;
+    private static final Field ADDRESS;
+    private static final Field CAPACITY;
+
+    static {
+<span class="nc" id="L14">        ByteBuffer direct = ByteBuffer.allocateDirect(0);</span>
+<span class="nc" id="L15">        ADDRESS = Jvm.getField(direct.getClass(), &quot;address&quot;);</span>
+<span class="nc" id="L16">        CAPACITY = Jvm.getField(direct.getClass(), &quot;capacity&quot;);</span>
+<span class="nc" id="L17">    }</span>
+
+    public static void setAddressCapacity(ByteBuffer buffer, long address, long capacity) {
+<span class="nc" id="L20">        int cap = Math.toIntExact(capacity);</span>
+        try {
+<span class="nc" id="L22">            ADDRESS.setLong(buffer, address);</span>
+<span class="nc" id="L23">            CAPACITY.setInt(buffer, cap);</span>
+<span class="nc" id="L24">        } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L25">            throw new AssertionError(e);</span>
+<span class="nc" id="L26">        }</span>
+<span class="nc" id="L27">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

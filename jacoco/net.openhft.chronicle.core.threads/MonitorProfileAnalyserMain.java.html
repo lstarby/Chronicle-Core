@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MonitorProfileAnalyserMain.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.threads</a> &gt; <span class="el_source">MonitorProfileAnalyserMain.java</span></div><h1>MonitorProfileAnalyserMain.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package net.openhft.chronicle.core.threads;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.stream.Collectors;
+
+// TODO Needs a test
+<span class="nc" id="L28">public class MonitorProfileAnalyserMain {</span>
+
+<span class="nc" id="L30">    private static final int MAX_LINES = Integer.getInteger(&quot;st.maxlines&quot;, 8);</span>
+    private static final String PROFILE_OF_THE_THREAD = &quot;profile of the thread&quot;;
+    private static final String THREAD_HAS_BLOCKED_FOR = &quot;thread has blocked for&quot;;
+
+    /**
+     * Reads one or more log files and looks for thread profiles to summarise
+     */
+    public static void main(String[] args) throws IOException {
+<span class="nc bnc" id="L38" title="All 2 branches missed.">        if (args.length == 0)</span>
+<span class="nc" id="L39">            System.err.println(&quot;No input file(s) provided&quot;);</span>
+
+<span class="nc" id="L41">        final String stIgnore = System.getProperty(&quot;st.ignore&quot;);</span>
+<span class="nc bnc" id="L42" title="All 2 branches missed.">        List&lt;String&gt; ignoreSubStrings = stIgnore != null ? Arrays.asList(stIgnore.split(&quot;,&quot;)) : Collections.emptyList();</span>
+<span class="nc" id="L43">        int interval = Integer.getInteger(&quot;interval&quot;, 0);</span>
+<span class="nc bnc" id="L44" title="All 2 branches missed.">        if (interval &lt;= 0) {</span>
+<span class="nc" id="L45">            main0(ignoreSubStrings, args);</span>
+        } else {
+            for (; ; ) {
+<span class="nc" id="L48">                main0(ignoreSubStrings, args);</span>
+<span class="nc" id="L49">                JitterSampler.sleepSilently(interval * 1000);</span>
+<span class="nc" id="L50">                System.out.println(&quot;\n---\n&quot;);</span>
+            }
+        }
+<span class="nc" id="L53">    }</span>
+
+    public static void main0(List&lt;String&gt; ignoreSubStrings, String[] args) throws IOException {
+<span class="nc" id="L56">        System.out.println(&quot;Grouped by line&quot;);</span>
+<span class="nc" id="L57">        Map&lt;String, Integer&gt; stackCount = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="nc bnc" id="L59" title="All 2 branches missed.">        for (String arg : args) {</span>
+<span class="nc" id="L60">            StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L61">            int lineCount = -1;</span>
+<span class="nc" id="L62">            try (BufferedReader br = Files.newBufferedReader(Paths.get(arg))) {</span>
+                // TODO: PrintGCApplicationStoppedTime
+
+<span class="nc bnc" id="L65" title="All 2 branches missed.">                for (String line; (line = br.readLine()) != null; ) {</span>
+<span class="nc bnc" id="L66" title="All 4 branches missed.">                    if (line.contains(PROFILE_OF_THE_THREAD) || line.contains(THREAD_HAS_BLOCKED_FOR)) {</span>
+<span class="nc bnc" id="L67" title="All 2 branches missed.">                        if (sb.length() &gt; 0) {</span>
+<span class="nc" id="L68">                            addToStackCount(ignoreSubStrings, stackCount, sb);</span>
+                        }
+<span class="nc" id="L70">                        lineCount = 0;</span>
+<span class="nc" id="L71">                        sb.setLength(0);</span>
+
+<span class="nc bnc" id="L73" title="All 4 branches missed.">                    } else if (partOfStackTrace(line) &amp;&amp; lineCount &gt;= 0) {</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">                        if (++lineCount &lt;= MAX_LINES) {</span>
+<span class="nc" id="L75">                            sb.append(line).append(&quot;\n&quot;);</span>
+                        }
+<span class="nc bnc" id="L77" title="All 2 branches missed.">                    } else if (sb.length() &gt; 0) {</span>
+<span class="nc" id="L78">                        addToStackCount(ignoreSubStrings, stackCount, sb);</span>
+<span class="nc" id="L79">                        sb.setLength(0);</span>
+                    }
+                }
+            }
+        }
+<span class="nc" id="L84">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; stackSortedByCount =</span>
+<span class="nc" id="L85">                stackCount.entrySet().stream()</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">                        .filter(e -&gt; e.getValue() &gt; 2)</span>
+<span class="nc" id="L87">                        .sorted(Comparator.comparing(e -&gt; -e.getValue())) // reversed</span>
+<span class="nc" id="L88">                        .limit(20)</span>
+<span class="nc" id="L89">                        .collect(Collectors.toList());</span>
+<span class="nc" id="L90">        stackSortedByCount</span>
+<span class="nc" id="L91">                .stream()</span>
+<span class="nc" id="L92">                .peek(e -&gt; stackCount.remove(e.getKey()))</span>
+<span class="nc" id="L93">                .forEach(e -&gt; System.out.println(e.getValue() + e.getKey()));</span>
+
+<span class="nc" id="L95">        System.out.println(&quot;Grouped by method.&quot;);</span>
+<span class="nc" id="L96">        Map&lt;String, Integer&gt; methodCount = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">        for (Map.Entry&lt;String, Integer&gt; entry : stackCount.entrySet()) {</span>
+<span class="nc" id="L98">            String stack = entry.getKey().replaceFirst(&quot;\\(.*?\\)&quot;, &quot;( * )&quot;);</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">            methodCount.compute(stack, (k, v) -&gt; (v == null ? 0 : v) + entry.getValue());</span>
+<span class="nc" id="L100">        }</span>
+
+<span class="nc" id="L102">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; methodSortedByCount =</span>
+<span class="nc" id="L103">                methodCount.entrySet().stream()</span>
+<span class="nc bnc" id="L104" title="All 2 branches missed.">                        .filter(e -&gt; e.getValue() &gt; 2)</span>
+<span class="nc" id="L105">                        .sorted(Comparator.comparing(e -&gt; -e.getValue())) // reversed</span>
+<span class="nc" id="L106">                        .limit(20)</span>
+<span class="nc" id="L107">                        .collect(Collectors.toList());</span>
+<span class="nc" id="L108">        methodSortedByCount</span>
+<span class="nc" id="L109">                .forEach(e -&gt; System.out.println(e.getValue() + e.getKey()));</span>
+<span class="nc" id="L110">    }</span>
+
+    private static void addToStackCount(List&lt;String&gt; ignoreSubStrings, Map&lt;String, Integer&gt; stackCount, StringBuilder sb) {
+<span class="nc" id="L113">        String lines = sb.toString();</span>
+<span class="nc bnc" id="L114" title="All 2 branches missed.">        for (String ss : ignoreSubStrings)</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">            if (lines.contains(ss))</span>
+<span class="nc" id="L116">                return;</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        stackCount.compute(lines, (k, v) -&gt; v == null ? 1 : v + 1);</span>
+<span class="nc" id="L118">    }</span>
+
+    private static boolean partOfStackTrace(String line) {
+        // make this more robust in the face of copy/pasting etc.
+<span class="nc bnc" id="L122" title="All 4 branches missed.">        return line.startsWith(&quot;\tat &quot;) || line.matches(&quot;\\s+at .*&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

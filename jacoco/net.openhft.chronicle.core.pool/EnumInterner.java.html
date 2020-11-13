@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EnumInterner.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.pool</a> &gt; <span class="el_source">EnumInterner.java</span></div><h1>EnumInterner.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core.pool;
+
+import net.openhft.chronicle.core.ClassLocal;
+import net.openhft.chronicle.core.Maths;
+import net.openhft.chronicle.core.util.StringUtils;
+import org.jetbrains.annotations.NotNull;
+
+public class EnumInterner&lt;E extends Enum&lt;E&gt;&gt; {
+<span class="nc" id="L27">    public static final ClassLocal&lt;EnumInterner&gt; ENUM_INTERNER = ClassLocal.withInitial(EnumInterner::create);</span>
+
+    @NotNull
+    private final E[] interner;
+
+    private final int mask;
+    private final EnumCache&lt;E&gt; enumCache;
+
+    public EnumInterner(Class&lt;E&gt; eClass) {
+<span class="nc" id="L36">        this(eClass, 64);</span>
+<span class="nc" id="L37">    }</span>
+
+<span class="nc" id="L39">    public EnumInterner(Class&lt;E&gt; eClass, int capacity) {</span>
+<span class="nc" id="L40">        enumCache = EnumCache.of(eClass);</span>
+<span class="nc" id="L41">        int initialSize = enumCache.size() * 3 / 2;</span>
+<span class="nc" id="L42">        int n = Maths.nextPower2(Math.max(initialSize, capacity), 16);</span>
+<span class="nc" id="L43">        interner = (E[]) new Enum[n];</span>
+<span class="nc" id="L44">        mask = n - 1;</span>
+<span class="nc" id="L45">    }</span>
+
+    // bridging method to fix the types.
+    @NotNull
+    static &lt;V extends Enum&lt;V&gt;&gt; EnumInterner&lt;V&gt; create(Class&lt;?&gt; aClass) {
+        @NotNull @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L51">        Class&lt;V&gt; vClass = (Class&lt;V&gt;) aClass;</span>
+<span class="nc" id="L52">        return new EnumInterner&lt;&gt;(vClass);</span>
+    }
+
+    public E intern(@NotNull CharSequence cs) {
+<span class="nc" id="L56">        int h = Maths.hash32(cs) &amp; mask;</span>
+<span class="nc" id="L57">        E e = interner[h];</span>
+<span class="nc bnc" id="L58" title="All 4 branches missed.">        if (e != null &amp;&amp; StringUtils.isEqual(e.name(), cs))</span>
+<span class="nc" id="L59">            return e;</span>
+<span class="nc" id="L60">        @NotNull String s2 = cs.toString();</span>
+<span class="nc" id="L61">        E value = enumCache.valueOf(s2);</span>
+<span class="nc" id="L62">        interner[h] = value;</span>
+<span class="nc" id="L63">        return interner[h];</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

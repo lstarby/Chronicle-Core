@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractInvocationHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.util</a> &gt; <span class="el_source">AbstractInvocationHandler.java</span></div><h1>AbstractInvocationHandler.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core.util;
+
+import net.openhft.chronicle.core.ClassLocal;
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.io.Closeable;
+
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.reflect.*;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+public abstract class AbstractInvocationHandler implements InvocationHandler {
+    // Lookup which allows access to default methods in another package.
+<span class="fc" id="L34">    private static final ClassLocal&lt;MethodHandles.Lookup&gt; PRIVATE_LOOKUP = ClassLocal.withInitial(AbstractInvocationHandler::acquireLookup);</span>
+<span class="fc" id="L35">    private static final Object[] NO_ARGS = {};</span>
+    // called when close() is called.
+    private Closeable closeable;
+
+    /**
+     * @param mapSupplier ConcurrentHashMap::new for thread safe, HashMap::new for single thread, Collections::emptyMap to turn off.
+     */
+<span class="fc" id="L42">    protected AbstractInvocationHandler(Supplier&lt;Map&gt; mapSupplier) {</span>
+        //noinspection unchecked
+<span class="fc" id="L44">        Map&lt;Object, Function&lt;Method, MethodHandle&gt;&gt; proxyToLambda = mapSupplier.get();</span>
+        //noinspection unchecked
+<span class="fc" id="L46">        Map&lt;Method, MethodHandle&gt; defaultMethod = mapSupplier.get();</span>
+<span class="fc" id="L47">    }</span>
+
+    private static MethodHandles.Lookup acquireLookup(Class&lt;?&gt; c) {
+        try {
+            // try to create one using a constructor
+<span class="nc" id="L52">            Constructor&lt;MethodHandles.Lookup&gt; lookupConstructor =</span>
+<span class="nc" id="L53">                    MethodHandles.Lookup.class.getDeclaredConstructor(Class.class, Integer.TYPE);</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">            if (!lookupConstructor.isAccessible()) {</span>
+<span class="nc" id="L55">                Jvm.setAccessible(lookupConstructor);</span>
+            }
+<span class="nc" id="L57">            return lookupConstructor.newInstance(c, MethodHandles.Lookup.PRIVATE);</span>
+<span class="nc" id="L58">        } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException ignored) {</span>
+        }
+        try {
+            // Try to grab an internal one,
+<span class="nc" id="L62">            final Field field = MethodHandles.Lookup.class.getDeclaredField(&quot;IMPL_LOOKUP&quot;);</span>
+<span class="nc" id="L63">            Jvm.setAccessible(field);</span>
+<span class="nc" id="L64">            return (MethodHandles.Lookup) field.get(null);</span>
+<span class="nc" id="L65">        } catch (Exception e) {</span>
+            // use the default to produce an error message.
+<span class="nc" id="L67">            return MethodHandles.lookup();</span>
+        }
+    }
+
+    @Override
+    public final Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+<span class="fc" id="L73">        Class&lt;?&gt; declaringClass = method.getDeclaringClass();</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">        if (declaringClass == Object.class) {</span>
+<span class="nc" id="L75">            return method.invoke(this, args);</span>
+
+<span class="pc bpc" id="L77" title="3 of 4 branches missed.">        } else if (declaringClass == Closeable.class &amp;&amp; method.getName().equals(&quot;close&quot;)) {</span>
+<span class="nc" id="L78">            Closeable.closeQuietly(closeable);</span>
+<span class="nc" id="L79">            return null;</span>
+        }
+
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (args == null)</span>
+<span class="fc" id="L83">            args = NO_ARGS;</span>
+
+<span class="fc" id="L85">        Object o = doInvoke(proxy, method, args);</span>
+<span class="pc bpc" id="L86" title="2 of 4 branches missed.">        if (o == null &amp;&amp; method.getReturnType().isInstance(proxy))</span>
+<span class="nc" id="L87">            return proxy; // assume it's a chained method.</span>
+
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        return o == null ? ObjectUtils.defaultValue(method.getReturnType()) : o;</span>
+    }
+
+    /**
+     * Default handler for method call.
+     */
+    protected abstract Object doInvoke(Object proxy, Method method, Object[] args) throws InvocationTargetException, IllegalAccessException;
+
+    @SuppressWarnings(&quot;WeakerAccess&quot;)
+    MethodHandle methodHandleForProxy(Object proxy, Method m) {
+        try {
+<span class="nc" id="L100">            Class&lt;?&gt; declaringClass = m.getDeclaringClass();</span>
+<span class="nc" id="L101">            final MethodHandles.Lookup lookup = PRIVATE_LOOKUP.get(declaringClass);</span>
+<span class="nc" id="L102">            return lookup</span>
+<span class="nc" id="L103">                    .in(declaringClass)</span>
+<span class="nc" id="L104">                    .unreflectSpecial(m, declaringClass)</span>
+<span class="nc" id="L105">                    .bindTo(proxy);</span>
+<span class="nc" id="L106">        } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L107">            throw new AssertionError(e);</span>
+        }
+    }
+
+    public void onClose(Closeable closeable) {
+<span class="nc" id="L112">        this.closeable = closeable;</span>
+<span class="nc" id="L113">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

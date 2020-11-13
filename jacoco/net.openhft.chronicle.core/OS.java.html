@@ -1,0 +1,517 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OS.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core</a> &gt; <span class="el_source">OS.java</span></div><h1>OS.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core;
+
+import net.openhft.chronicle.core.util.ThrowingFunction;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import sun.nio.ch.FileChannelImpl;
+
+import javax.naming.TimeLimitExceededException;
+import java.io.*;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.nio.channels.FileChannel;
+import java.util.Scanner;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
+import static java.lang.management.ManagementFactory.getRuntimeMXBean;
+
+/**
+ * Low level access to OS class.
+ */
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">public enum OS {</span>
+    ;
+<span class="fc" id="L47">    public static final String TMP = System.getProperty(&quot;java.io.tmpdir&quot;);</span>
+<span class="fc" id="L48">    public static final String USER_DIR = System.getProperty(&quot;user.dir&quot;);</span>
+<span class="fc" id="L49">    public static final String USER_HOME = System.getProperty(&quot;user.home&quot;);</span>
+<span class="fc" id="L50">    public static final Exception TIME_LIMIT = new TimeLimitExceededException();</span>
+    // can't make it private until all libraries have been updated to x.20.60, Use getTarget() instead.
+    @Deprecated
+<span class="fc" id="L53">    public static final String TARGET = findTarget();</span>
+<span class="fc" id="L54">    static final ClassLocal&lt;MethodHandle&gt; MAP0_MH = ClassLocal.withInitial(c -&gt; {</span>
+        try {
+            Method map0;
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">            if (Jvm.isJava14Plus()) map0 = Jvm.getMethod(c, &quot;map0&quot;, int.class, long.class, long.class, boolean.class);</span>
+<span class="fc" id="L58">            else map0 = Jvm.getMethod(c, &quot;map0&quot;, int.class, long.class, long.class);</span>
+<span class="fc" id="L59">            return MethodHandles.lookup().unreflect(map0);</span>
+<span class="nc" id="L60">        } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L61">            throw new AssertionError(e);</span>
+        }
+    });
+<span class="fc" id="L64">    private static final String HOST_NAME = getHostName0();</span>
+<span class="fc" id="L65">    private static final String USER_NAME = System.getProperty(&quot;user.name&quot;);</span>
+    private static final int MAP_RO = 0;
+    private static final int MAP_RW = 1;
+    private static final int MAP_PV = 2;
+<span class="fc" id="L69">    private static final boolean IS64BIT = is64Bit0();</span>
+<span class="fc" id="L70">    private static final AtomicInteger PROCESS_ID = new AtomicInteger();</span>
+<span class="fc" id="L71">    private static final String OS = System.getProperty(&quot;os.name&quot;).toLowerCase();</span>
+<span class="fc" id="L72">    private static final boolean IS_LINUX = OS.startsWith(&quot;linux&quot;);</span>
+<span class="fc" id="L73">    private static final boolean IS_MAC = OS.contains(&quot;mac&quot;);</span>
+<span class="fc" id="L74">    private static final boolean IS_WIN = OS.startsWith(&quot;win&quot;);</span>
+<span class="fc" id="L75">    private static final boolean IS_WIN10 = OS.equals(&quot;windows 10&quot;);</span>
+<span class="fc" id="L76">    private static final AtomicLong memoryMapped = new AtomicLong();</span>
+    private static final MethodHandle UNMAPP0_MH;
+    private static final MethodHandle READ0_MH;
+    private static final MethodHandle WRITE0_MH, WRITE0_MH2;
+    public static final int SAFE_PAGE_SIZE = 64 &lt;&lt; 10;
+    private static int PAGE_SIZE; // avoid circular initialisation
+    private static int MAP_ALIGNMENT;
+
+    static {
+        // make sure it is initialised first.
+<span class="fc" id="L86">        Jvm.debug();</span>
+        try {
+<span class="fc" id="L88">            Method unmap0 = Jvm.getMethod(FileChannelImpl.class, &quot;unmap0&quot;, long.class, long.class);</span>
+<span class="fc" id="L89">            UNMAPP0_MH = MethodHandles.lookup().unreflect(unmap0);</span>
+
+<span class="fc" id="L91">            Class&lt;?&gt; fdi = Class.forName(&quot;sun.nio.ch.FileDispatcherImpl&quot;);</span>
+<span class="fc" id="L92">            Method read0 = Jvm.getMethod(fdi, &quot;read0&quot;, FileDescriptor.class, long.class, int.class);</span>
+<span class="fc" id="L93">            READ0_MH = MethodHandles.lookup().unreflect(read0);</span>
+
+<span class="fc" id="L95">            MethodHandle write0Mh = null, write0Mh2 = null;</span>
+            try {
+<span class="fc" id="L97">                Method write0 = Jvm.getMethod(fdi, &quot;write0&quot;, FileDescriptor.class, long.class, int.class);</span>
+<span class="fc" id="L98">                write0Mh = MethodHandles.lookup().unreflect(write0);</span>
+<span class="nc" id="L99">            } catch (AssertionError ae) {</span>
+<span class="nc" id="L100">                Method write0 = Jvm.getMethod(fdi, &quot;write0&quot;, FileDescriptor.class, long.class, int.class, boolean.class);</span>
+<span class="nc" id="L101">                write0Mh2 = MethodHandles.lookup().unreflect(write0);</span>
+<span class="fc" id="L102">            }</span>
+<span class="fc" id="L103">            WRITE0_MH = write0Mh;</span>
+<span class="fc" id="L104">            WRITE0_MH2 = write0Mh2;</span>
+<span class="fc" id="L105">            TIME_LIMIT.setStackTrace(new StackTraceElement[0]);</span>
+
+<span class="nc" id="L107">        } catch (IllegalAccessException | ClassNotFoundException e) {</span>
+<span class="nc" id="L108">            throw new AssertionError(e);</span>
+<span class="fc" id="L109">        }</span>
+<span class="fc" id="L110">    }</span>
+
+    @NotNull
+    private static String findTarget() {
+<span class="fc" id="L114">        String target = System.getProperty(&quot;project.build.directory&quot;);</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        if (target != null)</span>
+<span class="fc" id="L116">            return target;</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        for (File dir = new File(System.getProperty(&quot;user.dir&quot;)); dir != null; dir = dir.getParentFile()) {</span>
+<span class="nc" id="L118">            @NotNull File mavenTarget = new File(dir, &quot;target&quot;);</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">            if (mavenTarget.exists())</span>
+<span class="nc" id="L120">                return mavenTarget.getAbsolutePath();</span>
+<span class="nc" id="L121">            @NotNull File gradleTarget = new File(dir, &quot;build&quot;);</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">            if (gradleTarget.exists())</span>
+<span class="nc" id="L123">                return gradleTarget.getAbsolutePath();</span>
+        }
+<span class="nc" id="L125">        return TMP + &quot;/target&quot;;</span>
+    }
+
+    @NotNull
+    public static String findDir(@NotNull String suffix) throws FileNotFoundException {
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        for (@NotNull String s : System.getProperty(&quot;java.class.path&quot;).split(&quot;:&quot;)) {</span>
+<span class="nc bnc" id="L131" title="All 4 branches missed.">            if (s.endsWith(suffix) &amp;&amp; new File(s).isDirectory())</span>
+<span class="nc" id="L132">                return s;</span>
+        }
+<span class="nc" id="L134">        throw new FileNotFoundException(suffix);</span>
+    }
+
+    /**
+     * Search a list of directories to find a path which is the last element.
+     *
+     * @param path of directories to use if found, the last path is always appended.
+     * @return the resulting File path.
+     */
+    @NotNull
+    public static File findFile(@NotNull String... path) {
+<span class="nc" id="L145">        @NotNull File dir = new File(&quot;.&quot;).getAbsoluteFile();</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">        for (int i = 0; i &lt; path.length - 1; i++) {</span>
+<span class="nc" id="L147">            @NotNull File dir2 = new File(dir, path[i]);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            if (dir2.isDirectory())</span>
+<span class="nc" id="L149">                dir = dir2;</span>
+        }
+<span class="nc" id="L151">        return new File(dir, path[path.length - 1]);</span>
+    }
+
+    public static String getHostName() {
+<span class="nc" id="L155">        return HOST_NAME;</span>
+    }
+
+    public static String getUserName() {
+<span class="nc" id="L159">        return USER_NAME;</span>
+    }
+
+    public static String getTarget() {
+<span class="fc" id="L163">        return TARGET;</span>
+    }
+
+    private static String getHostName0() {
+        try {
+<span class="fc" id="L168">            return InetAddress.getLocalHost().getHostName();</span>
+<span class="nc" id="L169">        } catch (UnknownHostException e) {</span>
+<span class="nc" id="L170">            return &quot;localhost&quot;;</span>
+        }
+    }
+
+    /**
+     * @return native memory accessor class
+     */
+    @NotNull
+    public static Memory memory() {
+<span class="fc" id="L179">        return UnsafeMemory.INSTANCE;</span>
+    }
+
+    /**
+     * Align the size to page boundary
+     *
+     * @param size the size to align
+     * @return aligned size
+     * @see #pageSize()
+     */
+    public static long pageAlign(long size) {
+<span class="fc" id="L190">        long mask = pageSize() - 1;</span>
+<span class="fc" id="L191">        return (size + mask) &amp; ~mask;</span>
+    }
+
+    /**
+     * @return size of pages
+     * @see #pageAlign(long)
+     */
+    public static int pageSize() {
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (PAGE_SIZE == 0)</span>
+<span class="fc" id="L200">            PAGE_SIZE = memory().pageSize();</span>
+<span class="fc" id="L201">        return PAGE_SIZE;</span>
+    }
+
+    /**
+     * Align an offset of a memory mapping in file based on OS.
+     *
+     * @param offset to align
+     * @return offset aligned
+     * @see #mapAlignment()
+     */
+    public static long mapAlign(long offset) {
+<span class="nc" id="L212">        int chunkMultiple = (int) mapAlignment();</span>
+<span class="nc" id="L213">        return (offset + chunkMultiple - 1) / chunkMultiple * chunkMultiple;</span>
+    }
+
+    /**
+     * Returns the alignment of offsets in file, from which memory mapping could start, based on
+     * OS.
+     *
+     * @return granularity of an offset in a file
+     * @see #mapAlign(long)
+     */
+    public static long mapAlignment() {
+<span class="nc bnc" id="L224" title="All 2 branches missed.">        if (MAP_ALIGNMENT == 0)</span>
+            // Windows 10 produces this error for alignment of less than 64K
+            // java.io.IOException: The base address or the file offset specified does not have the proper alignment
+            // c.f. https://docs.microsoft.com/en-us/windows/win32/memory/creating-a-view-within-a-file
+<span class="nc bnc" id="L228" title="All 2 branches missed.">            MAP_ALIGNMENT = isWindows() ? SAFE_PAGE_SIZE : pageSize();</span>
+<span class="nc" id="L229">        return MAP_ALIGNMENT;</span>
+    }
+
+    /**
+     * @return is the JVM 64-bit
+     */
+    public static boolean is64Bit() {
+<span class="fc" id="L236">        return IS64BIT;</span>
+    }
+
+    private static boolean is64Bit0() {
+        String systemProp;
+<span class="fc" id="L241">        systemProp = System.getProperty(&quot;com.ibm.vm.bitmode&quot;);</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">        if (systemProp != null) {</span>
+<span class="nc" id="L243">            return &quot;64&quot;.equals(systemProp);</span>
+        }
+<span class="fc" id="L245">        systemProp = System.getProperty(&quot;sun.arch.data.model&quot;);</span>
+<span class="pc bpc" id="L246" title="1 of 2 branches missed.">        if (systemProp != null) {</span>
+<span class="fc" id="L247">            return &quot;64&quot;.equals(systemProp);</span>
+        }
+<span class="nc" id="L249">        systemProp = System.getProperty(&quot;java.vm.version&quot;);</span>
+<span class="nc bnc" id="L250" title="All 4 branches missed.">        return systemProp != null &amp;&amp; systemProp.contains(&quot;_64&quot;);</span>
+    }
+
+    public static int getProcessId() {
+        // getting the process id is slow if the reserve DNS is not setup correctly.
+        // which is frustrating since we don't actually use the hostname.
+<span class="fc" id="L256">        int id = PROCESS_ID.get();</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        if (id == 0)</span>
+<span class="fc" id="L258">            PROCESS_ID.set(id = getProcessId0());</span>
+<span class="fc" id="L259">        return id;</span>
+    }
+
+    private static int getProcessId0() {
+<span class="fc" id="L263">        @Nullable String pid = null;</span>
+<span class="fc" id="L264">        @NotNull final File self = new File(&quot;/proc/self&quot;);</span>
+        try {
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">            if (self.exists())</span>
+<span class="fc" id="L267">                pid = self.getCanonicalFile().getName();</span>
+<span class="nc" id="L268">        } catch (IOException ignored) {</span>
+            // ignored
+<span class="fc" id="L270">        }</span>
+<span class="pc bpc" id="L271" title="1 of 2 branches missed.">        if (pid == null)</span>
+<span class="nc" id="L272">            pid = getRuntimeMXBean().getName().split(&quot;@&quot;, 0)[0];</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">        if (pid != null) {</span>
+            try {
+<span class="fc" id="L275">                return Integer.parseInt(pid);</span>
+<span class="nc" id="L276">            } catch (NumberFormatException e) {</span>
+                // ignored
+            }
+        }
+<span class="nc" id="L280">        int rpid = ThreadLocalRandom.current().nextInt(2, 1 &lt;&lt; 16);</span>
+<span class="nc" id="L281">        Jvm.warn().on(OS.class, &quot;Unable to determine PID, picked a random number=&quot; + rpid);</span>
+<span class="nc" id="L282">        return rpid;</span>
+    }
+
+    /**
+     * This may or may not be the OS thread id, but should be unique across processes
+     *
+     * @return a unique tid of up to 48 bits.
+     */
+/*    public static long getUniqueTid() {
+        return getUniqueTid(Thread.currentThread());
+    }
+
+    public static long getUniqueTid(Thread thread) {
+        // Assume 48 bit for 16 to 24-bit process id and 16 million threads from the start.
+        return ((long) getProcessId() &lt;&lt; 24) | thread.getId();
+    }*/
+    public static boolean isWindows() {
+<span class="fc" id="L299">        return IS_WIN;</span>
+    }
+
+    public static boolean isMacOSX() {
+<span class="fc" id="L303">        return IS_MAC;</span>
+    }
+
+    public static boolean isLinux() {
+<span class="fc" id="L307">        return IS_LINUX;</span>
+    }
+
+    /**
+     * @return the maximum PID.
+     */
+    public static long getPidMax() throws NumberFormatException {
+<span class="nc bnc" id="L314" title="All 2 branches missed.">        if (isLinux()) {</span>
+<span class="nc" id="L315">            @NotNull File file = new File(&quot;/proc/sys/kernel/pid_max&quot;);</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">            if (file.canRead())</span>
+                try {
+<span class="nc" id="L318">                    return Maths.nextPower2(new Scanner(file).nextLong(), 1);</span>
+<span class="nc" id="L319">                } catch (FileNotFoundException e) {</span>
+<span class="nc" id="L320">                    Jvm.debug().on(OS.class, e);</span>
+<span class="nc" id="L321">                } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L322">                    throw new AssertionError(e);</span>
+<span class="nc" id="L323">                }</span>
+<span class="nc bnc" id="L324" title="All 2 branches missed.">        } else if (isMacOSX()) {</span>
+<span class="nc" id="L325">            return 1L &lt;&lt; 24;</span>
+        }
+        // the default.
+<span class="nc bnc" id="L328" title="All 2 branches missed.">        return IS_WIN10 ? 1L &lt;&lt; 32 : 1L &lt;&lt; 16;</span>
+    }
+
+    /**
+     * Map a region of a file into memory.
+     *
+     * @param fileChannel to map
+     * @param mode        of access
+     * @param start       offset within a file
+     * @param size        of region to map.
+     * @return the address of the memory mapping.
+     * @throws IOException              if the mapping fails
+     * @throws IllegalArgumentException if the arguments are not valid
+     */
+    public static long map(@NotNull FileChannel fileChannel, FileChannel.MapMode mode, long start, long size)
+            throws IOException, IllegalArgumentException {
+<span class="nc bnc" id="L344" title="All 4 branches missed.">        if (isWindows() &amp;&amp; size &gt; 4L &lt;&lt; 30)</span>
+<span class="nc" id="L345">            throw new IllegalArgumentException(&quot;Mapping more than 4096 MiB is unusable on Windows, size = &quot; + (size &gt;&gt; 20) + &quot; MiB&quot;);</span>
+<span class="nc" id="L346">        return map0(fileChannel, imodeFor(mode), mapAlign(start), pageAlign(size));</span>
+    }
+
+    private static long invokeFileChannelMap0(@NotNull MethodHandle map0, @NotNull FileChannel fileChannel, int imode, long start, long size,
+                                              @NotNull ThrowingFunction&lt;OutOfMemoryError, Long, IOException&gt; errorHandler) throws IOException {
+        try {
+            // For now, access is assumed to be non-synchronous
+            // TODO - Support passing/deducing synchronous flag externally
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">            if (Jvm.isJava14Plus())</span>
+<span class="nc" id="L355">                return (long) map0.invokeExact((FileChannelImpl) fileChannel, imode, start, size, false);</span>
+            else
+<span class="fc" id="L357">                return (long) map0.invokeExact((FileChannelImpl) fileChannel, imode, start, size);</span>
+<span class="nc" id="L358">        } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L359">            throw new AssertionError(&quot;Method map0 is not accessible&quot;, e);</span>
+<span class="nc" id="L360">        } catch (Throwable e) {</span>
+<span class="nc bnc" id="L361" title="All 2 branches missed.">            if (e instanceof OutOfMemoryError) {</span>
+<span class="nc" id="L362">                return errorHandler.apply((OutOfMemoryError) e);</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">            } else if (e instanceof IOException) {</span>
+<span class="nc" id="L364">                throw (IOException) e;</span>
+            } else {
+<span class="nc" id="L366">                throw new IOException(e);</span>
+            }
+        }
+    }
+
+    static long map0(@NotNull FileChannel fileChannel, int imode, long start, long size) throws IOException {
+<span class="fc" id="L372">        MethodHandle map0 = MAP0_MH.get(fileChannel.getClass());</span>
+<span class="fc" id="L373">        final long address = invokeFileChannelMap0(map0, fileChannel, imode, start, size, oome1 -&gt; {</span>
+<span class="nc" id="L374">            System.gc();</span>
+<span class="nc" id="L375">            Jvm.pause(100);</span>
+
+<span class="nc" id="L377">            return invokeFileChannelMap0(map0, fileChannel, imode, start, size, oome2 -&gt; {</span>
+<span class="nc" id="L378">                throw new IOException(&quot;Map failed&quot;, oome2);</span>
+            });
+        });
+<span class="fc" id="L381">        memoryMapped.addAndGet(size);</span>
+<span class="fc" id="L382">        return address;</span>
+    }
+
+    /**
+     * Unmap a region of memory.
+     *
+     * @param address of the start of the mapping.
+     * @param size    of the region mapped.
+     * @throws IOException if the unmap fails.
+     */
+    public static void unmap(long address, long size) throws IOException {
+        try {
+<span class="fc" id="L394">            final long size2 = pageAlign(size);</span>
+<span class="fc" id="L395">            int n = (int) UNMAPP0_MH.invokeExact(address, size2);</span>
+<span class="fc" id="L396">            memoryMapped.addAndGet(-size2);</span>
+<span class="nc" id="L397">        } catch (Throwable e) {</span>
+<span class="nc" id="L398">            throw asAnIOException(e);</span>
+<span class="fc" id="L399">        }</span>
+<span class="fc" id="L400">    }</span>
+
+    public static long memoryMapped() {
+<span class="nc" id="L403">        return memoryMapped.get();</span>
+    }
+
+    @NotNull
+    private static IOException asAnIOException(Throwable e) {
+<span class="nc bnc" id="L408" title="All 2 branches missed.">        if (e instanceof InvocationTargetException)</span>
+<span class="nc" id="L409">            e = e.getCause();</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">        if (e instanceof IOException)</span>
+<span class="nc" id="L411">            return (IOException) e;</span>
+<span class="nc" id="L412">        return new IOException(e);</span>
+    }
+
+    static int imodeFor(FileChannel.MapMode mode) {
+<span class="fc" id="L416">        int imode = -1;</span>
+<span class="pc bpc" id="L417" title="1 of 2 branches missed.">        if (FileChannel.MapMode.READ_ONLY.equals(mode))</span>
+<span class="nc" id="L418">            imode = MAP_RO;</span>
+<span class="pc bpc" id="L419" title="1 of 2 branches missed.">        else if (FileChannel.MapMode.READ_WRITE.equals(mode))</span>
+<span class="fc" id="L420">            imode = MAP_RW;</span>
+<span class="nc bnc" id="L421" title="All 2 branches missed.">        else if (FileChannel.MapMode.PRIVATE.equals(mode))</span>
+<span class="nc" id="L422">            imode = MAP_PV;</span>
+<span class="pc bpc" id="L423" title="2 of 4 branches missed.">        assert (imode &gt;= 0);</span>
+<span class="fc" id="L424">        return imode;</span>
+    }
+
+    /**
+     * Get the space actually used by a file.
+     *
+     * @param filename to get the actual size of
+     * @return size in bytes.
+     */
+    public static long spaceUsed(@NotNull String filename) {
+<span class="nc" id="L434">        return spaceUsed(new File(filename));</span>
+    }
+
+    private static long spaceUsed(@NotNull File file) {
+<span class="nc bnc" id="L438" title="All 2 branches missed.">        if (!isWindows()) {</span>
+            try {
+<span class="nc" id="L440">                String du_k = run(&quot;du&quot;, &quot;-ks&quot;, file.getAbsolutePath());</span>
+<span class="nc" id="L441">                return Long.parseLong(du_k.substring(0, du_k.indexOf('\t')));</span>
+<span class="nc" id="L442">            } catch (@NotNull IOException | NumberFormatException e) {</span>
+<span class="nc" id="L443">                Jvm.warn().on(OS.class, e);</span>
+            }
+        }
+<span class="nc" id="L446">        return file.length();</span>
+    }
+
+    private static String run(String... cmds) throws IOException {
+<span class="nc" id="L450">        @NotNull ProcessBuilder pb = new ProcessBuilder(cmds);</span>
+<span class="nc" id="L451">        pb.redirectErrorStream(true);</span>
+<span class="nc" id="L452">        Process process = pb.start();</span>
+<span class="nc" id="L453">        @NotNull StringWriter sw = new StringWriter();</span>
+<span class="nc" id="L454">        @NotNull char[] chars = new char[1024];</span>
+<span class="nc" id="L455">        try (@NotNull Reader r = new InputStreamReader(process.getInputStream())) {</span>
+<span class="nc bnc" id="L456" title="All 2 branches missed.">            for (int len; (len = r.read(chars)) &gt; 0; ) {</span>
+<span class="nc" id="L457">                sw.write(chars, 0, len);</span>
+            }
+        }
+<span class="nc" id="L460">        return sw.toString();</span>
+    }
+
+    public static String userDir() {
+<span class="nc" id="L464">        return USER_DIR;</span>
+    }
+
+    public static int read0(FileDescriptor fd, long address, int len) throws IOException {
+        try {
+<span class="nc" id="L469">            return (int) READ0_MH.invokeExact(fd, address, len);</span>
+<span class="nc" id="L470">        } catch (IOException ioe) {</span>
+<span class="nc" id="L471">            throw ioe;</span>
+<span class="nc" id="L472">        } catch (Throwable e) {</span>
+<span class="nc" id="L473">            throw new IOException(e);</span>
+        }
+    }
+
+    public static int write0(FileDescriptor fd, long address, int len) throws IOException {
+        try {
+<span class="nc bnc" id="L479" title="All 2 branches missed.">            if (WRITE0_MH2 == null)</span>
+<span class="nc" id="L480">                return (int) WRITE0_MH.invokeExact(fd, address, len);</span>
+            else
+<span class="nc" id="L482">                return (int) WRITE0_MH2.invokeExact(fd, address, len, false);</span>
+<span class="nc" id="L483">        } catch (IOException ioe) {</span>
+<span class="nc" id="L484">            throw ioe;</span>
+<span class="nc" id="L485">        } catch (Throwable e) {</span>
+<span class="nc" id="L486">            throw new IOException(e);</span>
+        }
+    }
+
+<span class="nc bnc" id="L490" title="All 2 branches missed.">    public static final class Unmapper implements Runnable {</span>
+        private final long size;
+
+        private volatile long address;
+
+<span class="nc" id="L495">        public Unmapper(long address, long size) throws IllegalStateException {</span>
+
+<span class="nc bnc" id="L497" title="All 4 branches missed.">            assert (address != 0);</span>
+<span class="nc" id="L498">            this.address = address;</span>
+<span class="nc" id="L499">            this.size = size;</span>
+<span class="nc" id="L500">        }</span>
+
+        @Override
+        public void run() {
+<span class="nc bnc" id="L504" title="All 2 branches missed.">            if (address == 0)</span>
+<span class="nc" id="L505">                return;</span>
+
+            try {
+<span class="nc" id="L508">                unmap(address, size);</span>
+<span class="nc" id="L509">                address = 0;</span>
+
+<span class="nc" id="L511">            } catch (@NotNull IOException e) {</span>
+<span class="nc" id="L512">                Jvm.warn().on(OS.class, &quot;Error on unmap and release&quot;, e);</span>
+<span class="nc" id="L513">            }</span>
+<span class="nc" id="L514">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JitterSampler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.threads</a> &gt; <span class="el_source">JitterSampler.java</span></div><h1>JitterSampler.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package net.openhft.chronicle.core.threads;
+
+import java.util.concurrent.TimeUnit;
+
+<span class="fc" id="L22">public enum JitterSampler {</span>
+    ;
+    public static final String PROFILE_OF_THE_THREAD = &quot;profile of the thread&quot;;
+    public static final String THREAD_HAS_BLOCKED_FOR = &quot;thread has blocked for&quot;;
+
+<span class="fc" id="L27">    static final long JITTER_THRESHOLD =</span>
+<span class="fc" id="L28">            TimeUnit.MILLISECONDS.toNanos(</span>
+<span class="fc" id="L29">                    Long.getLong(&quot;chronicle.jitter.threshold&quot;, 10));</span>
+    static volatile String desc;
+    static volatile Thread thread;
+<span class="fc" id="L32">    static volatile long time = Long.MAX_VALUE;</span>
+
+    public static void atStage(String desc) {
+<span class="fc" id="L35">        JitterSampler.desc = desc;</span>
+<span class="fc" id="L36">        thread = Thread.currentThread();</span>
+<span class="fc" id="L37">        time = System.nanoTime();</span>
+<span class="fc" id="L38">    }</span>
+
+    public static String takeSnapshot() {
+<span class="fc" id="L41">        return takeSnapshot(JITTER_THRESHOLD);</span>
+    }
+
+    public static String takeSnapshot(long threshold) {
+<span class="fc" id="L45">        long time = JitterSampler.time;</span>
+<span class="fc" id="L46">        long now = System.nanoTime();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        if (time &gt; now - threshold)</span>
+<span class="fc" id="L48">            return null;</span>
+<span class="fc" id="L49">        Thread thread = JitterSampler.thread;</span>
+<span class="fc" id="L50">        String desc = JitterSampler.desc;</span>
+<span class="pc bpc" id="L51" title="2 of 4 branches missed.">        if (thread == null || desc == null)</span>
+<span class="nc" id="L52">            return null;</span>
+<span class="fc" id="L53">        StackTraceElement[] stes = thread.getStackTrace();</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        if (stes.length &lt; 1)</span>
+<span class="nc" id="L55">            return null;</span>
+<span class="fc" id="L56">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L57">        sb.append(PROFILE_OF_THE_THREAD)</span>
+<span class="fc" id="L58">                .append(' ').append(thread.getName())</span>
+<span class="fc" id="L59">                .append(' ').append(desc)</span>
+<span class="fc" id="L60">                .append(&quot; &quot; + THREAD_HAS_BLOCKED_FOR + &quot; &quot;).append((now - time) / 1000_000)</span>
+<span class="fc" id="L61">                .append(&quot; ms\n&quot;);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (StackTraceElement ste : stes) {</span>
+<span class="fc" id="L63">            sb.append(&quot;\tat &quot;).append(ste).append('\n');</span>
+        }
+<span class="fc" id="L65">        return sb.toString();</span>
+    }
+
+    public static void finished() {
+<span class="fc" id="L69">        thread = null;</span>
+<span class="fc" id="L70">        desc = null;</span>
+<span class="fc" id="L71">        time = Long.MAX_VALUE;</span>
+<span class="fc" id="L72">    }</span>
+
+    public static void sleepSilently(int millis) {
+        try {
+<span class="fc" id="L76">            Thread.sleep(millis);</span>
+<span class="nc" id="L77">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L78">            Thread.currentThread().interrupt();</span>
+<span class="fc" id="L79">        }</span>
+<span class="fc" id="L80">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

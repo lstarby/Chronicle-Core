@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AbstractReferenceCounted.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.io</a> &gt; <span class="el_source">AbstractReferenceCounted.java</span></div><h1>AbstractReferenceCounted.java</h1><pre class="source lang-java linenums">package net.openhft.chronicle.core.io;
+
+import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.StackTrace;
+import net.openhft.chronicle.core.onoes.Slf4jExceptionHandler;
+import net.openhft.chronicle.core.util.WeakIdentityHashMap;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Collections;
+import java.util.Set;
+
+import static net.openhft.chronicle.core.io.BackgroundResourceReleaser.BG_RELEASER;
+
+public abstract class AbstractReferenceCounted implements ReferenceCountedTracer, ReferenceOwner {
+<span class="fc" id="L15">    protected static final long WARN_NS = (long) (Jvm.getDouble(&quot;reference.warn.secs&quot;, 0.003) * 1e9);</span>
+<span class="fc" id="L16">    protected static final int WARN_COUNT = Integer.getInteger(&quot;reference.warn.count&quot;, Integer.MAX_VALUE);</span>
+    static volatile Set&lt;AbstractReferenceCounted&gt; REFERENCE_COUNTED_SET;
+    private transient volatile Thread usedByThread;
+    private transient final ReferenceCountedTracer referenceCounted;
+    private final int referenceId;
+
+    protected AbstractReferenceCounted() {
+<span class="fc" id="L23">        this(true);</span>
+<span class="fc" id="L24">    }</span>
+
+<span class="fc" id="L26">    protected AbstractReferenceCounted(boolean monitored) {</span>
+<span class="pc bpc" id="L27" title="1 of 4 branches missed.">        Runnable performRelease = BG_RELEASER &amp;&amp; performReleaseInBackground()</span>
+                ? this::backgroundPerformRelease
+                : this::inThreadPerformRelease;
+<span class="fc" id="L30">        referenceId = IOTools.counter(getClass()).incrementAndGet();</span>
+<span class="fc" id="L31">        referenceCounted = ReferenceCountedTracer.onReleased(performRelease, referenceName());</span>
+
+<span class="fc" id="L33">        Set&lt;AbstractReferenceCounted&gt; set = REFERENCE_COUNTED_SET;</span>
+<span class="pc bpc" id="L34" title="2 of 4 branches missed.">        if (monitored &amp;&amp; set != null)</span>
+<span class="nc" id="L35">            set.add(this);</span>
+<span class="fc" id="L36">    }</span>
+
+    public static void enableReferenceTracing() {
+<span class="nc" id="L39">        AbstractCloseable.enableCloseableTracing();</span>
+<span class="nc" id="L40">        REFERENCE_COUNTED_SET =</span>
+<span class="nc" id="L41">                Collections.newSetFromMap(</span>
+                        new WeakIdentityHashMap&lt;&gt;());
+<span class="nc" id="L43">    }</span>
+
+    public static void disableReferenceTracing() {
+<span class="nc" id="L46">        AbstractCloseable.disableCloseableTracing();</span>
+<span class="nc" id="L47">        REFERENCE_COUNTED_SET = null;</span>
+<span class="nc" id="L48">    }</span>
+
+    public static void assertReferencesReleased() {
+<span class="nc" id="L51">        Set&lt;AbstractReferenceCounted&gt; traceSet = REFERENCE_COUNTED_SET;</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">        if (traceSet == null) {</span>
+<span class="nc" id="L53">            Jvm.warn().on(AbstractReferenceCounted.class, &quot;reference tracing disabled&quot;);</span>
+<span class="nc" id="L54">            return;</span>
+        }
+
+<span class="nc" id="L57">        AbstractCloseable.assertCloseablesClosed();</span>
+
+<span class="nc" id="L59">        AssertionError openFiles = new AssertionError(&quot;Reference counted not released&quot;);</span>
+<span class="nc" id="L60">        synchronized (traceSet) {</span>
+<span class="nc bnc" id="L61" title="All 2 branches missed.">            for (AbstractReferenceCounted key : traceSet) {</span>
+<span class="nc bnc" id="L62" title="All 4 branches missed.">                if (key == null || key.refCount() == 0)</span>
+<span class="nc" id="L63">                    continue;</span>
+
+                try {
+<span class="nc" id="L66">                    key.throwExceptionIfNotReleased();</span>
+<span class="nc" id="L67">                } catch (Exception e) {</span>
+<span class="nc" id="L68">                    openFiles.addSuppressed(e);</span>
+<span class="nc" id="L69">                }</span>
+<span class="nc" id="L70">            }</span>
+<span class="nc" id="L71">        }</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        if (openFiles.getSuppressed().length &gt; 0)</span>
+<span class="nc" id="L73">            throw openFiles;</span>
+<span class="nc" id="L74">    }</span>
+
+    public static void unmonitor(ReferenceCounted counted) {
+<span class="nc bnc" id="L77" title="All 2 branches missed.">        if (REFERENCE_COUNTED_SET != null)</span>
+<span class="nc" id="L78">            REFERENCE_COUNTED_SET.remove(counted);</span>
+<span class="nc" id="L79">    }</span>
+
+    @Override
+    public int referenceId() {
+<span class="fc" id="L83">        return referenceId;</span>
+    }
+
+    @Override
+    public StackTrace createdHere() {
+<span class="nc" id="L88">        return referenceCounted.createdHere();</span>
+    }
+
+    public void throwExceptionIfNotReleased() {
+<span class="nc" id="L92">        referenceCounted.throwExceptionIfNotReleased();</span>
+<span class="nc" id="L93">    }</span>
+
+    void backgroundPerformRelease() {
+<span class="fc" id="L96">        BackgroundResourceReleaser.release(this);</span>
+<span class="fc" id="L97">    }</span>
+
+    void inThreadPerformRelease() {
+<span class="fc" id="L100">        long start = System.nanoTime();</span>
+<span class="fc" id="L101">        performRelease();</span>
+<span class="fc" id="L102">        long time = System.nanoTime() - start;</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        if (time &gt;= WARN_NS)</span>
+<span class="nc" id="L104">            Slf4jExceptionHandler.WARN.on(getClass(), &quot;Took &quot; + time / 100_000 / 10.0 + &quot; ms to performRelease&quot;);</span>
+<span class="fc" id="L105">    }</span>
+
+    protected boolean performReleaseInBackground() {
+<span class="fc" id="L108">        return false;</span>
+    }
+
+    protected abstract void performRelease();
+
+    @Override
+    public void reserve(ReferenceOwner id) throws IllegalStateException {
+<span class="pc bpc" id="L115" title="3 of 4 branches missed.">        if (WARN_COUNT &lt; Integer.MAX_VALUE &amp;&amp; referenceCounted.refCount() &gt;= WARN_COUNT)</span>
+<span class="nc bnc" id="L116" title="All 2 branches missed.">            if ((referenceCounted.refCount() - WARN_COUNT) % 10 == 0)</span>
+<span class="nc" id="L117">                Jvm.warn().on(getClass(), &quot;high reserve count for &quot; + referenceName() + &quot; was &quot; + referenceCounted.refCount(), new StackTrace(&quot;reserved here&quot;));</span>
+<span class="fc" id="L118">        referenceCounted.reserve(id);</span>
+<span class="fc" id="L119">    }</span>
+
+    @Override
+    public void release(ReferenceOwner id) throws IllegalStateException {
+<span class="fc" id="L123">        referenceCounted.release(id);</span>
+<span class="fc" id="L124">    }</span>
+
+    @Override
+    public void releaseLast(ReferenceOwner id) throws IllegalStateException {
+<span class="fc" id="L128">        referenceCounted.releaseLast(id);</span>
+<span class="fc" id="L129">    }</span>
+
+    @Override
+    public boolean tryReserve(ReferenceOwner id) throws IllegalStateException {
+<span class="nc" id="L133">        return referenceCounted.tryReserve(id);</span>
+    }
+
+    @Override
+    public void reserveTransfer(ReferenceOwner from, ReferenceOwner to) throws IllegalStateException {
+<span class="nc" id="L138">        referenceCounted.reserveTransfer(from, to);</span>
+<span class="nc" id="L139">    }</span>
+
+    @Override
+    public int refCount() {
+<span class="fc" id="L143">        return referenceCounted.refCount();</span>
+    }
+
+    @Override
+    public void throwExceptionIfReleased() throws IllegalStateException {
+<span class="fc" id="L148">        referenceCounted.throwExceptionIfReleased();</span>
+<span class="fc" id="L149">    }</span>
+
+    @Override
+    public void warnAndReleaseIfNotReleased() {
+<span class="nc" id="L153">        referenceCounted.warnAndReleaseIfNotReleased();</span>
+<span class="nc" id="L154">    }</span>
+
+    public boolean reservedBy(ReferenceOwner owner) {
+<span class="nc" id="L157">        return referenceCounted.reservedBy(owner);</span>
+    }
+
+    protected boolean threadSafetyCheck(boolean isUsed) {
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (!AbstractCloseable.CHECK_THREAD_SAFETY)</span>
+<span class="nc" id="L162">            return true;</span>
+<span class="pc bpc" id="L163" title="1 of 4 branches missed.">        if (usedByThread == null &amp;&amp; !isUsed)</span>
+<span class="nc" id="L164">            return true;</span>
+
+<span class="fc" id="L166">        Thread currentThread = Thread.currentThread();</span>
+<span class="pc bpc" id="L167" title="1 of 4 branches missed.">        if (usedByThread == null || !usedByThread.isAlive()) {</span>
+<span class="fc" id="L168">            usedByThread = currentThread;</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        } else if (usedByThread != currentThread) {</span>
+<span class="nc" id="L170">            throw new IllegalStateException(&quot;Component which is not thread safes used by &quot; + usedByThread + &quot; and &quot; + currentThread);</span>
+        }
+<span class="fc" id="L172">        return true;</span>
+    }
+
+    @Override
+    @NotNull
+    public String toString() {
+<span class="nc" id="L178">        return referenceName();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

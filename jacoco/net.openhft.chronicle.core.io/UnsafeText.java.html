@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UnsafeText.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.io</a> &gt; <span class="el_source">UnsafeText.java</span></div><h1>UnsafeText.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *       http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package net.openhft.chronicle.core.io;
+
+import net.openhft.chronicle.core.Maths;
+import sun.misc.Unsafe;
+
+import java.nio.BufferOverflowException;
+
+import static net.openhft.chronicle.core.UnsafeMemory.UNSAFE;
+
+/**
+ * These are fast, unsafe ways to render text.
+ * NOTE: The caller has to ensure there is always plenty of memory to perform this operation.
+ */
+<span class="fc" id="L31">public enum UnsafeText {</span>
+    ;
+
+    private static final long MAX_VALUE_DIVIDE_5 = Long.MAX_VALUE / 5;
+    private static final String MIN_VALUE_STR = &quot;&quot; + Long.MIN_VALUE;
+
+    public static long appendFixed(long address, long num) {
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        if (num &gt;= 0) {</span>
+            // nothing
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">        } else if (num &gt; Long.MIN_VALUE) {</span>
+<span class="fc" id="L41">            UNSAFE.putByte(address++, (byte) '-');</span>
+<span class="fc" id="L42">            num = -num;</span>
+        } else {
+<span class="nc" id="L44">            return appendText(address, MIN_VALUE_STR);</span>
+        }
+
+<span class="fc" id="L47">        long start = address;</span>
+        do {
+<span class="fc" id="L49">            long div = num / 10;</span>
+<span class="fc" id="L50">            long mod = num % 10;</span>
+<span class="fc" id="L51">            UNSAFE.putByte(address++, (byte) ('0' + mod));</span>
+<span class="fc" id="L52">            num = div;</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        } while (num &gt; 0);</span>
+        // reverse the order
+<span class="fc" id="L55">        reverseTheOrder(address, start);</span>
+<span class="fc" id="L56">        return address;</span>
+    }
+
+    protected static void reverseTheOrder(long address, long start) {
+<span class="fc" id="L60">        int end = (int) (address - start) - 1;</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (int i = 0; i &lt; end; i++, end--) {</span>
+<span class="fc" id="L62">            long a1 = start + i;</span>
+<span class="fc" id="L63">            long a2 = start + end;</span>
+<span class="fc" id="L64">            byte b1 = UNSAFE.getByte(a1);</span>
+<span class="fc" id="L65">            byte b2 = UNSAFE.getByte(a2);</span>
+<span class="fc" id="L66">            UNSAFE.putByte(a2, b1);</span>
+<span class="fc" id="L67">            UNSAFE.putByte(a1, b2);</span>
+        }
+<span class="fc" id="L69">    }</span>
+
+    public static long appendFixed(long address, double num, int digits) {
+<span class="nc" id="L72">        long tens = Maths.tens(digits);</span>
+<span class="nc" id="L73">        double mag = num * tens;</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">        if (Math.abs(mag) &lt; 1L &lt;&lt; 53) {</span>
+<span class="nc" id="L75">            long num2 = Math.round(mag);</span>
+<span class="nc" id="L76">            return appendBase10d(address, num2, digits);</span>
+        } else {
+<span class="nc" id="L78">            return appendDouble(address, num);</span>
+        }
+    }
+
+    public static long appendBase10d(long address, long num, int decimal) {
+<span class="nc bnc" id="L83" title="All 2 branches missed.">        if (num &gt;= 0) {</span>
+            // nothing
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        } else if (num &gt; Long.MIN_VALUE) {</span>
+<span class="nc" id="L86">            UNSAFE.putByte(address++, (byte) '-');</span>
+<span class="nc" id="L87">            num = -num;</span>
+        } else {
+<span class="nc" id="L89">            throw new AssertionError();</span>
+        }
+
+<span class="nc" id="L92">        long start = address;</span>
+        do {
+<span class="nc" id="L94">            long div = num / 10;</span>
+<span class="nc" id="L95">            long mod = num % 10;</span>
+<span class="nc" id="L96">            UNSAFE.putByte(address++, (byte) ('0' + mod));</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (--decimal == 0)</span>
+<span class="nc" id="L98">                UNSAFE.putByte(address++, (byte) '.');</span>
+<span class="nc" id="L99">            num = div;</span>
+<span class="nc bnc" id="L100" title="All 4 branches missed.">        } while (num &gt; 0 || decimal &gt;= 0);</span>
+        // reverse the order
+<span class="nc" id="L102">        reverseTheOrder(address, start);</span>
+<span class="nc" id="L103">        return address;</span>
+    }
+
+    public static long appendDouble(long address, double d)
+            throws BufferOverflowException, IllegalArgumentException {
+<span class="nc" id="L108">        long val = Double.doubleToRawLongBits(d);</span>
+<span class="nc" id="L109">        int sign = (int) (val &gt;&gt;&gt; 63);</span>
+<span class="nc" id="L110">        int exp = (int) ((val &gt;&gt;&gt; 52) &amp; 2047);</span>
+<span class="nc" id="L111">        long mantissa = val &amp; ((1L &lt;&lt; 52) - 1);</span>
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (sign != 0) {</span>
+<span class="nc" id="L113">            UNSAFE.putByte(address++, (byte) '-');</span>
+        }
+<span class="nc bnc" id="L115" title="All 4 branches missed.">        if (exp == 0 &amp;&amp; mantissa == 0) {</span>
+<span class="nc" id="L116">            UNSAFE.putByte(address, (byte) '0');</span>
+<span class="nc" id="L117">            UNSAFE.putShort(address + 1, (short) ('.' + ('0' &lt;&lt; 8)));</span>
+<span class="nc" id="L118">            address += 3;</span>
+<span class="nc" id="L119">            return address;</span>
+
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        } else if (exp == 2047) {</span>
+<span class="nc bnc" id="L122" title="All 2 branches missed.">            return appendText(address,</span>
+                    mantissa == 0 ? &quot;Infinity&quot; : &quot;NaN&quot;);
+
+<span class="nc bnc" id="L125" title="All 2 branches missed.">        } else if (exp &gt; 0) {</span>
+<span class="nc" id="L126">            mantissa += 1L &lt;&lt; 52;</span>
+        }
+<span class="nc" id="L128">        final int shift = (1023 + 52) - exp;</span>
+
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        if (shift &gt; 0) {</span>
+            // integer and faction
+<span class="nc bnc" id="L132" title="All 2 branches missed.">            if (shift &lt; 53) {</span>
+<span class="nc" id="L133">                return appendIntegerAndFraction(address, d, sign, mantissa, shift);</span>
+
+            } else {
+<span class="nc" id="L136">                return appendFraction(address, d, sign, mantissa, shift);</span>
+            }
+        }
+        // large number
+<span class="nc" id="L140">        return appendLargeNumber(address, mantissa, shift);</span>
+    }
+
+    protected static long appendLargeNumber(long address, long mantissa, int shift) {
+<span class="nc" id="L144">        mantissa &lt;&lt;= 10;</span>
+<span class="nc" id="L145">        int precision = -10 - shift;</span>
+<span class="nc" id="L146">        int digits = 0;</span>
+<span class="nc bnc" id="L147" title="All 6 branches missed.">        while ((precision &gt; 53 || mantissa &gt; Long.MAX_VALUE &gt;&gt; precision) &amp;&amp; precision &gt; 0) {</span>
+<span class="nc" id="L148">            digits++;</span>
+<span class="nc" id="L149">            precision--;</span>
+<span class="nc" id="L150">            long mod = mantissa % 5;</span>
+<span class="nc" id="L151">            mantissa /= 5;</span>
+<span class="nc" id="L152">            int modDiv = 1;</span>
+<span class="nc bnc" id="L153" title="All 4 branches missed.">            while (mantissa &lt; MAX_VALUE_DIVIDE_5 &amp;&amp; precision &gt; 1) {</span>
+<span class="nc" id="L154">                precision -= 1;</span>
+<span class="nc" id="L155">                mantissa &lt;&lt;= 1;</span>
+<span class="nc" id="L156">                modDiv &lt;&lt;= 1;</span>
+            }
+<span class="nc" id="L158">            mantissa += modDiv * mod / 5;</span>
+<span class="nc" id="L159">        }</span>
+<span class="nc bnc" id="L160" title="All 2 branches missed.">        long val2 = precision &gt; 0 ? mantissa &lt;&lt; precision : mantissa &gt;&gt;&gt; -precision;</span>
+
+<span class="nc" id="L162">        address = appendFixed(address, val2);</span>
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        for (int i = 0; i &lt; digits; i++)</span>
+<span class="nc" id="L164">            UNSAFE.putByte(address++, (byte) '0');</span>
+<span class="nc" id="L165">        return address;</span>
+    }
+
+    protected static long appendFraction(long address, double d, int sign, long mantissa, int shift) {
+        // fraction.
+<span class="nc" id="L170">        UNSAFE.putShort(address, (short) ('0' + ('.' &lt;&lt; 8)));</span>
+<span class="nc" id="L171">        address += 2;</span>
+<span class="nc" id="L172">        final int shift2 = 10;</span>
+<span class="nc" id="L173">        mantissa &lt;&lt;= shift2;</span>
+<span class="nc" id="L174">        long error = (1 &lt;&lt; (shift2 - 1));</span>
+<span class="nc" id="L175">        mantissa += error;</span>
+<span class="nc" id="L176">        int precision = shift + shift2;</span>
+
+<span class="nc" id="L178">        long value = 0;</span>
+<span class="nc" id="L179">        int decimalPlaces = 0;</span>
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        while (mantissa &gt; error) {</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">            while (mantissa &gt; MAX_VALUE_DIVIDE_5) {</span>
+<span class="nc" id="L182">                mantissa = (mantissa + 1) &gt;&gt;&gt; 1;</span>
+<span class="nc" id="L183">                error = ((error + 1) &gt;&gt;&gt; 1);</span>
+<span class="nc" id="L184">                precision--;</span>
+            }
+            // times 5*2 = 10
+<span class="nc" id="L187">            mantissa *= 5;</span>
+<span class="nc" id="L188">            error *= 5;</span>
+<span class="nc" id="L189">            precision--;</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">            if (precision &gt;= 64) {</span>
+<span class="nc" id="L191">                decimalPlaces++;</span>
+<span class="nc" id="L192">                UNSAFE.putByte(address++, (byte) '0');</span>
+<span class="nc" id="L193">                continue;</span>
+            }
+<span class="nc" id="L195">            long num = (mantissa &gt;&gt;&gt; precision);</span>
+<span class="nc" id="L196">            value = value * 10 + num;</span>
+<span class="nc" id="L197">            final char c = (char) ('0' + num);</span>
+//                    assert !(c &lt; '0' || c &gt; '9');
+<span class="nc" id="L199">            UNSAFE.putByte(address++, (byte) c);</span>
+<span class="nc" id="L200">            mantissa -= num &lt;&lt; precision;</span>
+<span class="nc" id="L201">            ++decimalPlaces;</span>
+<span class="nc bnc" id="L202" title="All 2 branches missed.">            final double parsedValue = asDouble(value, 0, sign != 0, decimalPlaces);</span>
+<span class="nc bnc" id="L203" title="All 2 branches missed.">            if (parsedValue == d)</span>
+<span class="nc" id="L204">                break;</span>
+<span class="nc" id="L205">        }</span>
+<span class="nc" id="L206">        return address;</span>
+    }
+
+    protected static long appendIntegerAndFraction(long address, double d, int sign, long mantissa, int shift) {
+<span class="nc" id="L210">        long intValue = mantissa &gt;&gt; shift;</span>
+<span class="nc" id="L211">        address = appendFixed(address, intValue);</span>
+<span class="nc" id="L212">        mantissa -= intValue &lt;&lt; shift;</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        if (mantissa &gt; 0) {</span>
+<span class="nc" id="L214">            UNSAFE.putByte(address++, (byte) '.');</span>
+<span class="nc" id="L215">            mantissa &lt;&lt;= 1;</span>
+<span class="nc" id="L216">            mantissa++;</span>
+<span class="nc" id="L217">            int precision = shift + 1;</span>
+<span class="nc" id="L218">            long error = 1;</span>
+
+<span class="nc" id="L220">            long value = intValue;</span>
+<span class="nc" id="L221">            int decimalPlaces = 0;</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">            while (mantissa &gt; error) {</span>
+                // times 5*2 = 10
+<span class="nc" id="L224">                mantissa *= 5;</span>
+<span class="nc" id="L225">                error *= 5;</span>
+<span class="nc" id="L226">                precision--;</span>
+<span class="nc" id="L227">                long num = (mantissa &gt;&gt; precision);</span>
+<span class="nc" id="L228">                value = value * 10 + num;</span>
+<span class="nc" id="L229">                UNSAFE.putByte(address++, (byte) ('0' + num));</span>
+<span class="nc" id="L230">                mantissa -= num &lt;&lt; precision;</span>
+
+<span class="nc bnc" id="L232" title="All 2 branches missed.">                final double parsedValue = asDouble(value, 0, sign != 0, ++decimalPlaces);</span>
+<span class="nc bnc" id="L233" title="All 2 branches missed.">                if (parsedValue == d)</span>
+<span class="nc" id="L234">                    break;</span>
+<span class="nc" id="L235">            }</span>
+<span class="nc" id="L236">        } else {</span>
+<span class="nc" id="L237">            UNSAFE.putShort(address, (short) ('.' + ('0' &lt;&lt; 8)));</span>
+<span class="nc" id="L238">            address += 2;</span>
+        }
+<span class="nc" id="L240">        return address;</span>
+    }
+
+    private static long appendText(long address, String s) {
+<span class="nc bnc" id="L244" title="All 2 branches missed.">        for (int i = 0; i &lt; s.length(); i++) {</span>
+<span class="nc" id="L245">            UNSAFE.putByte(address++, (byte) s.charAt(i));</span>
+        }
+<span class="nc" id="L247">        return address;</span>
+    }
+
+    private static double asDouble(long value, int exp, boolean negative, int deci) {
+<span class="nc" id="L251">        int scale2 = 0;</span>
+        double d;
+<span class="nc bnc" id="L253" title="All 2 branches missed.">        if (deci &gt; 29) {</span>
+<span class="nc" id="L254">            d = value / Math.pow(5, -deci);</span>
+
+<span class="nc bnc" id="L256" title="All 2 branches missed.">        } else if (deci &gt; 0) {</span>
+<span class="nc" id="L257">            scale2 = Long.numberOfLeadingZeros(value) - 1;</span>
+<span class="nc" id="L258">            value &lt;&lt;= scale2;</span>
+<span class="nc" id="L259">            long fives = Maths.fives(deci);</span>
+<span class="nc" id="L260">            long whole = value / fives;</span>
+<span class="nc" id="L261">            long rem = value % fives;</span>
+<span class="nc" id="L262">            d = whole + (double) rem / fives;</span>
+
+<span class="nc bnc" id="L264" title="All 2 branches missed.">        } else if (deci &lt; -29) {</span>
+<span class="nc" id="L265">            d = value * Math.pow(5, -deci);</span>
+
+<span class="nc bnc" id="L267" title="All 2 branches missed.">        } else if (deci &lt; 0) {</span>
+<span class="nc" id="L268">            double fives = Maths.fives(-deci);</span>
+<span class="nc" id="L269">            d = value * fives;</span>
+
+<span class="nc" id="L271">        } else {</span>
+<span class="nc" id="L272">            d = value;</span>
+        }
+
+<span class="nc" id="L275">        double scalb = Math.scalb(d, exp - deci - scale2);</span>
+<span class="nc bnc" id="L276" title="All 2 branches missed.">        return negative ? -scalb : scalb;</span>
+    }
+
+    public static long append8bit(long address, byte[] bytes) {
+<span class="nc" id="L280">        int len = bytes.length, i;</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">        for (i = 0; i &lt; len - 7; i += 8)</span>
+<span class="nc" id="L282">            UNSAFE.putLong(address + i, UNSAFE.getLong(bytes, Unsafe.ARRAY_BYTE_BASE_OFFSET + (long) i));</span>
+<span class="nc bnc" id="L283" title="All 2 branches missed.">        for (; i &lt; len; i++)</span>
+<span class="nc" id="L284">            UNSAFE.putByte(address + i, UNSAFE.getByte(bytes, Unsafe.ARRAY_BYTE_BASE_OFFSET + (long) i));</span>
+<span class="nc" id="L285">        return address + len;</span>
+    }
+
+    public static long append8bit(long address, char[] chars) {
+<span class="nc" id="L289">        int len = chars.length, i;</span>
+<span class="nc bnc" id="L290" title="All 2 branches missed.">        for (i = 0; i &lt; len; i++)</span>
+<span class="nc" id="L291">            UNSAFE.putByte(address + i, (byte) chars[i]);</span>
+<span class="nc" id="L292">        return address + len;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>

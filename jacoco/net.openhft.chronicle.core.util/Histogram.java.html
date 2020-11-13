@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Histogram.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">OpenHFT/Chronicle-Core</a> &gt; <a href="index.source.html" class="el_package">net.openhft.chronicle.core.util</a> &gt; <span class="el_source">Histogram.java</span></div><h1>Histogram.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2016-2020 chronicle.software
+ *
+ * https://chronicle.software
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package net.openhft.chronicle.core.util;
+
+import org.jetbrains.annotations.NotNull;
+
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.DoubleFunction;
+import java.util.stream.DoubleStream;
+
+// TODO add a dummy histogram.
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">public class Histogram implements NanoSampler {</span>
+<span class="fc" id="L32">    private static final DecimalFormat F3 = new DecimalFormat(&quot;0.000&quot;);</span>
+<span class="fc" id="L33">    private static final DecimalFormat F2 = new DecimalFormat(&quot;0.00&quot;);</span>
+<span class="fc" id="L34">    private static final DecimalFormat F1 = new DecimalFormat(&quot;0.0&quot;);</span>
+    private int fractionBits;
+    private int powersOf2;
+    private long overRange;
+    private long totalCount;
+    private long floor;
+    private int[] sampleCount;
+
+    public Histogram() {
+<span class="nc" id="L43">        this(42, 7);</span>
+<span class="nc" id="L44">    }</span>
+
+    public Histogram(int powersOf2, int fractionBits) {
+<span class="fc" id="L47">        this(powersOf2, fractionBits, 1.0);</span>
+<span class="fc" id="L48">    }</span>
+
+<span class="fc" id="L50">    public Histogram(int powersOf2, int fractionBits, double minValue) {</span>
+<span class="fc" id="L51">        this.powersOf2 = powersOf2;</span>
+<span class="fc" id="L52">        this.fractionBits = fractionBits;</span>
+<span class="fc" id="L53">        sampleCount = new int[powersOf2 &lt;&lt; fractionBits];</span>
+<span class="fc" id="L54">        floor = Double.doubleToRawLongBits(minValue) &gt;&gt; (52 - fractionBits);</span>
+<span class="fc" id="L55">    }</span>
+
+    /**
+     * @return Histogram for use with System.nanoTime() up to 4 second delay.
+     */
+    @NotNull
+    public static Histogram timeMicros() {
+<span class="nc" id="L62">        return new Histogram(22 /* 4 seconds */, 3 /* 2 decimal places */, 1000.0 /* nano-seconds */);</span>
+    }
+
+    public static double[] percentilesFor(long count) {
+<span class="nc" id="L66">        List&lt;Double&gt; values = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L67">        values.add(50 / 100.0);</span>
+<span class="nc" id="L68">        values.add(90 / 100.0);</span>
+<span class="nc" id="L69">        values.add(99 / 100.0);</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        if (count &gt; 10_000) {</span>
+<span class="nc" id="L71">            values.add(99.7 / 100.0);</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">            if (count &gt; 100_000) {</span>
+<span class="nc" id="L73">                values.add(99.9 / 100.0);</span>
+<span class="nc bnc" id="L74" title="All 2 branches missed.">                if (count &gt; 1_000_000) {</span>
+<span class="nc" id="L75">                    values.add(99.97 / 100.0);</span>
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                    if (count &gt; 2_000_000) {</span>
+<span class="nc" id="L77">                        values.add(99.99 / 100.0);</span>
+                    }
+                }
+            }
+        }
+<span class="nc" id="L82">        values.add(100 / 100.0);</span>
+<span class="nc" id="L83">        return values.stream().mapToDouble(d -&gt; d).toArray();</span>
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+<span class="nc bnc" id="L88" title="All 2 branches missed.">        if (!(obj instanceof Histogram))</span>
+<span class="nc" id="L89">            return false;</span>
+<span class="nc" id="L90">        @NotNull Histogram h = (Histogram) obj;</span>
+<span class="nc bnc" id="L91" title="All 6 branches missed.">        if (!(powersOf2 == h.powersOf2</span>
+                &amp;&amp; fractionBits == h.fractionBits
+                &amp;&amp; floor == h.floor))
+<span class="nc" id="L94">            return false;</span>
+<span class="nc" id="L95">        int size = powersOf2 &lt;&lt; fractionBits;</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">        for (int i = 0; i &lt; size; i++) {</span>
+<span class="nc bnc" id="L97" title="All 2 branches missed.">            if (sampleCount[i] != h.sampleCount[i])</span>
+<span class="nc" id="L98">                return false;</span>
+        }
+<span class="nc" id="L100">        return true;</span>
+    }
+
+    @NotNull
+    @Override
+    public String toString() {
+<span class="nc" id="L106">        return &quot;Histogram{&quot; +</span>
+                &quot;fractionBits=&quot; + fractionBits +
+                &quot;, powersOf2=&quot; + powersOf2 +
+                &quot;, overRange=&quot; + overRange +
+                &quot;, totalCount=&quot; + totalCount +
+                &quot;, floor=&quot; + floor +
+<span class="nc" id="L112">                &quot;, sampleCount=&quot; + Arrays.toString(sampleCount) +</span>
+                '}';
+    }
+
+    /**
+     * Re initialise this histogram from deserialized data
+     */
+    public void init(int powersOf2, int fractionBits, long overRange, long totalCount, long floor) {
+<span class="nc" id="L120">        this.powersOf2 = powersOf2;</span>
+<span class="nc" id="L121">        this.fractionBits = fractionBits;</span>
+<span class="nc" id="L122">        this.overRange = overRange;</span>
+<span class="nc" id="L123">        this.totalCount = totalCount;</span>
+<span class="nc" id="L124">        this.floor = floor;</span>
+
+<span class="nc" id="L126">        int minSampleCountLength = powersOf2 &lt;&lt; fractionBits;</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (sampleCount.length &lt; minSampleCountLength)</span>
+<span class="nc" id="L128">            sampleCount = new int[minSampleCountLength];</span>
+<span class="nc" id="L129">    }</span>
+
+    public int fractionBits() {
+<span class="nc" id="L132">        return fractionBits;</span>
+    }
+
+    public int powersOf2() {
+<span class="nc" id="L136">        return powersOf2;</span>
+    }
+
+    public long overRange() {
+<span class="nc" id="L140">        return overRange;</span>
+    }
+
+    public int[] sampleCount() {
+<span class="nc" id="L144">        return sampleCount;</span>
+    }
+
+    public void add(@NotNull Histogram h) {
+<span class="nc bnc" id="L148" title="All 4 branches missed.">        assert powersOf2 == h.powersOf2;</span>
+<span class="nc bnc" id="L149" title="All 4 branches missed.">        assert fractionBits == h.fractionBits;</span>
+<span class="nc" id="L150">        totalCount += h.totalCount;</span>
+<span class="nc" id="L151">        overRange += h.overRange;</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        for (int i = 0; i &lt; sampleCount.length; i++)</span>
+<span class="nc" id="L153">            sampleCount[i] += h.sampleCount[i];</span>
+<span class="nc" id="L154">    }</span>
+
+    public int sample(double time) {
+<span class="fc" id="L157">        int bucket = (int) ((Double.doubleToRawLongBits(time) &gt;&gt; (52 - fractionBits)) - floor);</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">        if (bucket &gt;= sampleCount.length)</span>
+<span class="nc" id="L159">            overRange++;</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        else if (bucket &gt;= 0)</span>
+<span class="fc" id="L161">            sampleCount[bucket]++;</span>
+<span class="fc" id="L162">        totalCount++;</span>
+<span class="fc" id="L163">        return bucket;</span>
+    }
+
+    public double min() {
+<span class="nc" id="L167">        return percentile(0.0);</span>
+    }
+
+    public double typical() {
+<span class="nc" id="L171">        return percentile(0.5);</span>
+    }
+
+    public double max() {
+<span class="nc" id="L175">        return percentile(1.0);</span>
+    }
+
+    public double percentile(double fraction) {
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (fraction &lt;= 0) {</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">            for (int i = 0; i &lt; sampleCount.length; i++) {</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">                if (sampleCount[i] &lt;= 0)</span>
+<span class="nc" id="L182">                    continue;</span>
+<span class="fc" id="L183">                long bits = ((((i + floor) &lt;&lt; 1) + 1) &lt;&lt; (51 - fractionBits));</span>
+<span class="fc" id="L184">                return Double.longBitsToDouble(bits);</span>
+            }
+<span class="nc" id="L186">            return 1;</span>
+        }
+<span class="fc" id="L188">        long value = (long) (totalCount * (1 - fraction));</span>
+<span class="fc" id="L189">        value -= overRange;</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        if (value &lt; 0)</span>
+<span class="nc" id="L191">            return Double.POSITIVE_INFINITY;</span>
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">        for (int i = sampleCount.length - 1; i &gt;= 0; i--) {</span>
+<span class="fc" id="L193">            value -= sampleCount[i];</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">            if (value &lt; 0) {</span>
+<span class="fc" id="L195">                long bits = ((((i + floor) &lt;&lt; 1) + 1) &lt;&lt; (51 - fractionBits));</span>
+<span class="fc" id="L196">                return Double.longBitsToDouble(bits);</span>
+            }
+        }
+<span class="nc" id="L199">        return 1;</span>
+    }
+
+    @NotNull
+    public double[] getPercentiles() {
+<span class="nc" id="L204">        return getPercentiles(percentilesFor(totalCount));</span>
+    }
+
+    @NotNull
+    public double[] getPercentiles(double[] percentileFor) {
+<span class="nc" id="L209">        return DoubleStream.of(percentileFor).map(this::percentile).toArray();</span>
+    }
+
+    @NotNull
+    public String toMicrosFormat() {
+<span class="fc" id="L214">        return toMicrosFormat(t -&gt; t / 1e3);</span>
+    }
+
+    @NotNull
+    public String toMicrosFormat(@NotNull DoubleFunction&lt;Double&gt; toMicros) {
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">        if (totalCount &lt; 1_000_000)</span>
+<span class="nc" id="L220">            return &quot;50/90 99/99.9 99.99 - worst was &quot; +</span>
+<span class="nc" id="L221">                    p(toMicros.apply(percentile(0.5))) + &quot; / &quot; +</span>
+<span class="nc" id="L222">                    p(toMicros.apply(percentile(0.9))) + &quot;  &quot; +</span>
+<span class="nc" id="L223">                    p(toMicros.apply(percentile(0.99))) + &quot; / &quot; +</span>
+<span class="nc" id="L224">                    p(toMicros.apply(percentile(0.999))) + &quot;  &quot; +</span>
+<span class="nc" id="L225">                    p(toMicros.apply(percentile(0.9999))) + &quot; - &quot; +</span>
+<span class="nc" id="L226">                    p(toMicros.apply(percentile(1)));</span>
+
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">        if (totalCount &lt; 10_000_000)</span>
+<span class="fc" id="L229">            return &quot;50/90 99/99.9 99.99/99.999 - worst was &quot; +</span>
+<span class="fc" id="L230">                    p(toMicros.apply(percentile(0.5))) + &quot; / &quot; +</span>
+<span class="fc" id="L231">                    p(toMicros.apply(percentile(0.9))) + &quot;  &quot; +</span>
+<span class="fc" id="L232">                    p(toMicros.apply(percentile(0.99))) + &quot; / &quot; +</span>
+<span class="fc" id="L233">                    p(toMicros.apply(percentile(0.999))) + &quot;  &quot; +</span>
+<span class="fc" id="L234">                    p(toMicros.apply(percentile(0.9999))) + &quot; / &quot; +</span>
+<span class="fc" id="L235">                    p(toMicros.apply(percentile(0.99999))) + &quot; - &quot; +</span>
+<span class="fc" id="L236">                    p(toMicros.apply(percentile(1)));</span>
+
+<span class="nc" id="L238">        return &quot;50/90 99/99.9 99.99/99.999 99.9999/worst was &quot; +</span>
+<span class="nc" id="L239">                p(toMicros.apply(percentile(0.5))) + &quot; / &quot; +</span>
+<span class="nc" id="L240">                p(toMicros.apply(percentile(0.9))) + &quot;  &quot; +</span>
+<span class="nc" id="L241">                p(toMicros.apply(percentile(0.99))) + &quot; / &quot; +</span>
+<span class="nc" id="L242">                p(toMicros.apply(percentile(0.999))) + &quot;  &quot; +</span>
+<span class="nc" id="L243">                p(toMicros.apply(percentile(0.9999))) + &quot; / &quot; +</span>
+<span class="nc" id="L244">                p(toMicros.apply(percentile(0.99999))) + &quot;  &quot; +</span>
+<span class="nc" id="L245">                p(toMicros.apply(percentile(0.999999))) + &quot; / &quot; +</span>
+<span class="nc" id="L246">                p(toMicros.apply(percentile(1)));</span>
+    }
+
+    @NotNull
+    public String toLongMicrosFormat() {
+<span class="fc" id="L251">        return toLongMicrosFormat(t -&gt; t / 1e3);</span>
+    }
+
+    @NotNull
+    public String toLongMicrosFormat(@NotNull DoubleFunction&lt;Double&gt; toMicros) {
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        if (totalCount &lt; 1_000_000)</span>
+<span class="fc" id="L257">            return &quot;50/90 97/99 99.7/99.9 99.97/99.99 - worst was &quot; +</span>
+<span class="fc" id="L258">                    p(toMicros.apply(percentile(0.5))) + &quot; / &quot; +</span>
+<span class="fc" id="L259">                    p(toMicros.apply(percentile(0.9))) + &quot;  &quot; +</span>
+<span class="fc" id="L260">                    p(toMicros.apply(percentile(0.97))) + &quot; / &quot; +</span>
+<span class="fc" id="L261">                    p(toMicros.apply(percentile(0.99))) + &quot;  &quot; +</span>
+<span class="fc" id="L262">                    p(toMicros.apply(percentile(0.997))) + &quot; / &quot; +</span>
+<span class="fc" id="L263">                    p(toMicros.apply(percentile(0.999))) + &quot;  &quot; +</span>
+<span class="fc" id="L264">                    p(toMicros.apply(percentile(0.9997))) + &quot; / &quot; +</span>
+<span class="fc" id="L265">                    p(toMicros.apply(percentile(0.9999))) + &quot; - &quot; +</span>
+<span class="fc" id="L266">                    p(toMicros.apply(percentile(1)));</span>
+
+<span class="nc bnc" id="L268" title="All 2 branches missed.">        if (totalCount &lt; 10_000_000)</span>
+<span class="nc" id="L269">            return &quot;50/90 97/99 99.7/99.9 99.97/99.99 99.997/99.999 - worst was &quot; +</span>
+<span class="nc" id="L270">                    p(toMicros.apply(percentile(0.5))) + &quot; / &quot; +</span>
+<span class="nc" id="L271">                    p(toMicros.apply(percentile(0.9))) + &quot;  &quot; +</span>
+<span class="nc" id="L272">                    p(toMicros.apply(percentile(0.97))) + &quot; / &quot; +</span>
+<span class="nc" id="L273">                    p(toMicros.apply(percentile(0.99))) + &quot;  &quot; +</span>
+<span class="nc" id="L274">                    p(toMicros.apply(percentile(0.997))) + &quot; / &quot; +</span>
+<span class="nc" id="L275">                    p(toMicros.apply(percentile(0.999))) + &quot;  &quot; +</span>
+<span class="nc" id="L276">                    p(toMicros.apply(percentile(0.9997))) + &quot; / &quot; +</span>
+<span class="nc" id="L277">                    p(toMicros.apply(percentile(0.9999))) + &quot;  &quot; +</span>
+<span class="nc" id="L278">                    p(toMicros.apply(percentile(0.99997))) + &quot; / &quot; +</span>
+<span class="nc" id="L279">                    p(toMicros.apply(percentile(0.99999))) + &quot; - &quot; +</span>
+<span class="nc" id="L280">                    p(toMicros.apply(percentile(1)));</span>
+
+<span class="nc" id="L282">        return &quot;50/90 97/99 99.7/99.9 99.97/99.99 99.997/99.999 99.9997/99.9999 - worst was &quot; +</span>
+<span class="nc" id="L283">                p(toMicros.apply(percentile(0.5))) + &quot; / &quot; +</span>
+<span class="nc" id="L284">                p(toMicros.apply(percentile(0.9))) + &quot;  &quot; +</span>
+<span class="nc" id="L285">                p(toMicros.apply(percentile(0.97))) + &quot; / &quot; +</span>
+<span class="nc" id="L286">                p(toMicros.apply(percentile(0.99))) + &quot;  &quot; +</span>
+<span class="nc" id="L287">                p(toMicros.apply(percentile(0.997))) + &quot; / &quot; +</span>
+<span class="nc" id="L288">                p(toMicros.apply(percentile(0.999))) + &quot;  &quot; +</span>
+<span class="nc" id="L289">                p(toMicros.apply(percentile(0.9997))) + &quot; / &quot; +</span>
+<span class="nc" id="L290">                p(toMicros.apply(percentile(0.9999))) + &quot;  &quot; +</span>
+<span class="nc" id="L291">                p(toMicros.apply(percentile(0.99997))) + &quot; / &quot; +</span>
+<span class="nc" id="L292">                p(toMicros.apply(percentile(0.99999))) + &quot;  &quot; +</span>
+<span class="nc" id="L293">                p(toMicros.apply(percentile(0.999997))) + &quot; / &quot; +</span>
+<span class="nc" id="L294">                p(toMicros.apply(percentile(0.999999))) + &quot; - &quot; +</span>
+<span class="nc" id="L295">                p(toMicros.apply(percentile(1)));</span>
+    }
+
+    @NotNull
+    private String p(double v) {
+<span class="fc" id="L300">        double v2 = v * 100 / (1 &lt;&lt; fractionBits);</span>
+        // Uses non thread safe static fields.
+<span class="fc" id="L302">        synchronized (Histogram.class) {</span>
+<span class="fc bfc" id="L303" title="All 4 branches covered.">            return v2 &lt; 1 ? F3.format(v) :</span>
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">                    v2 &lt; 10 ? F2.format(v) :</span>
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">                            v2 &lt; 100 ? F1.format(v) :</span>
+<span class="pc" id="L306">                                    v2 &lt; 1000 ? Long.toString(Math.round(v)) :</span>
+<span class="pc" id="L307">                                            String.format(&quot;%,d&quot;, Math.round(v / 10) * 10);</span>
+        }
+    }
+
+    public long totalCount() {
+<span class="nc" id="L312">        return totalCount;</span>
+    }
+
+    public long floor() {
+<span class="nc" id="L316">        return floor;</span>
+    }
+
+    public void reset() {
+<span class="fc" id="L320">        totalCount = overRange = 0;</span>
+
+<span class="fc" id="L322">        Arrays.fill(sampleCount, 0);</span>
+<span class="fc" id="L323">    }</span>
+
+    @Override
+    public void sampleNanos(long nanos) {
+<span class="fc" id="L327">        sample(nanos);</span>
+<span class="fc" id="L328">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.6.202009150832</span></div></body></html>
