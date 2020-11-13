@@ -302,9 +302,9 @@ import java.util.stream.DoubleStream;
 <span class="fc" id="L302">        synchronized (Histogram.class) {</span>
 <span class="fc bfc" id="L303" title="All 4 branches covered.">            return v2 &lt; 1 ? F3.format(v) :</span>
 <span class="pc bpc" id="L304" title="1 of 2 branches missed.">                    v2 &lt; 10 ? F2.format(v) :</span>
-<span class="pc bpc" id="L305" title="1 of 2 branches missed.">                            v2 &lt; 100 ? F1.format(v) :</span>
-<span class="pc" id="L306">                                    v2 &lt; 1000 ? Long.toString(Math.round(v)) :</span>
-<span class="pc" id="L307">                                            String.format(&quot;%,d&quot;, Math.round(v / 10) * 10);</span>
+<span class="pc bfc" id="L305" title="All 2 branches covered.">                            v2 &lt; 100 ? F1.format(v) :</span>
+<span class="fc" id="L306">                                    v2 &lt; 1000 ? Long.toString(Math.round(v)) :</span>
+<span class="fc" id="L307">                                            String.format(&quot;%,d&quot;, Math.round(v / 10) * 10);</span>
         }
     }
 
