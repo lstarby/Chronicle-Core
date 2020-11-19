@@ -10,8 +10,6 @@ net.openhft.chronicle.core.cleaner.spi
 net.openhft.chronicle.core.cooler
 net.openhft.chronicle.core.internal
 net.openhft.chronicle.core.internal.analytics
-net.openhft.chronicle.core.internal.analytics.google
-net.openhft.chronicle.core.internal.analytics.http
 net.openhft.chronicle.core.internal.announcer
 net.openhft.chronicle.core.internal.pom
 net.openhft.chronicle.core.io
