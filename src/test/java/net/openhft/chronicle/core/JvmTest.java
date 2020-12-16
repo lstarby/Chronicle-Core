@@ -28,6 +28,7 @@ import sun.nio.ch.DirectBuffer;
 
 import javax.naming.ConfigurationException;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
@@ -66,12 +67,6 @@ public class JvmTest {
     @Test
     public void shouldGetMajorVersion() {
         assertTrue(Jvm.majorVersion() > 0);
-    }
-
-    @Test
-    public void testIsInternal() {
-        assertTrue(Jvm.isInternal(String.class.getName()));
-        assertFalse(Jvm.isInternal(getClass().getName()));
     }
 
     @Test
@@ -186,6 +181,35 @@ public class JvmTest {
             Assert.fail();
         } catch (Throwable ignored) {
         }
+    }
+
+    @Test
+    public void getField() {
+        final Field field = Jvm.getField(ClassA.class, "l");
+        assertNotNull(field);
+        assertEquals("l", field.getName());
+    }
+
+    @Test
+    public void getFieldNonExistent() {
+        try {
+            final Field field = Jvm.getField(ClassA.class, "qwerty");
+            fail("Field does not exist");
+        } catch (Throwable ignored) {
+            // Expected
+        }
+    }
+
+    @Test
+    public void getFieldOrNull() {
+        final Field field = Jvm.getField(ClassA.class, "l");
+        assertNotNull(field);
+        assertEquals("l", field.getName());
+    }
+
+    @Test
+    public void getFieldOrNullNonExistent() {
+        assertNull(Jvm.getFieldOrNull(ClassA.class, "qwerty"));
     }
 
     static class ClassA {

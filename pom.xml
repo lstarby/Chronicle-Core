@@ -109,6 +109,7 @@
                             <goal>enforcer</goal>
                         </goals>
                         <configuration>
+                            <binaryCompatibilityPercentageRequired>96</binaryCompatibilityPercentageRequired>
                             <referenceVersion>2.20.120</referenceVersion>
                         </configuration>
                     </execution>

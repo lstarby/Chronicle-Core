@@ -25,7 +25,7 @@ import java.nio.file.*;
 import java.util.HashMap;
 import java.util.Map;
 
-public class ClassMetrics {
+public final class ClassMetrics {
     private final int offset;
     private final int length;
 
